@@ -1,0 +1,38 @@
+version: "3.9"
+
+services:
+  # Observability
+  jaeger:
+    image: jaegertracing/all-in-one:1.57
+    ports: ["16686:16686", "4317:4317"]
+    profiles: ["infra"]
+
+  # Backends
+  core-api:
+    build: { context: ./src/Core.Api, dockerfile: Dockerfile }
+    environment:
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
+    depends_on: [jaeger]
+    profiles: ["core"]
+
+  perf-api:
+    build: { context: ./src/Perf.Api, dockerfile: Dockerfile }
+    environment:
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
+    depends_on: [jaeger]
+    profiles: ["perf"]
+
+  comp-api:
+    build: { context: ./src/Comp.Api, dockerfile: Dockerfile }
+    environment:
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
+    depends_on: [jaeger]
+    profiles: ["comp"]
+
+  gateway:
+    build: { context: ./src/Gateway, dockerfile: Dockerfile }
+    environment:
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
+    ports: ["8080:8080"]
+    depends_on: [jaeger, core-api, perf-api, comp-api]
+    profiles: ["gw"]

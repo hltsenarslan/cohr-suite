@@ -1,0 +1,17 @@
+<!doctype html><meta charset="utf-8"/>
+<title>Co-HR M0</title>
+<style>body{font-family:system-ui;margin:2rem} code{background:#eee;padding:.2rem .4rem}</style>
+<h1>Co-HR – M0 Skeleton</h1>
+<ul id="checks"></ul>
+<script>
+    async function check(name, url){
+        const li=document.createElement('li'); li.textContent=name+' ...';
+        document.getElementById('checks').appendChild(li);
+        try{ const r=await fetch(url); li.innerHTML=`<strong>${name}</strong>: ${r.ok?'✅':'❌'} <code>${r.status}</code>`;}
+        catch(e){ li.innerHTML=`<strong>${name}</strong>: ❌ <code>${e}</code>`;}
+    }
+    check('Gateway /health', '/health');
+    check('Core /health (via gateway)', '/api/core/health');
+    check('Performance /health (via gateway)', '/api/perf/health');
+    check('Compensation /health (via gateway)', '/api/comp/health');
+</script>
