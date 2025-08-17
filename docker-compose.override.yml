@@ -1,0 +1,101 @@
+version: "3.9"
+
+services:
+  # Hepsi SDK ile, kod bind-mount + dotnet watch run
+  core-api:
+    image: mcr.microsoft.com/dotnet/sdk:9.0
+    working_dir: /workspace
+    volumes:
+      - ./src/Core.Api:/workspace
+    command: >
+      bash -lc "
+      dotnet restore &&
+      dotnet watch run --no-launch-profile --urls http://0.0.0.0:8080
+      "
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://0.0.0.0:8080
+      DOTNET_USE_POLLING_FILE_WATCHER: "1"
+      DOTNET_WATCH_SUPPRESS_LAUNCH_BROWSER: "1"
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
+      # Postgres compose'ta publish edildiği için localden erişmeyeceğiz; ağ içinden erişeceğiz:
+      ConnectionStrings__Default: Host=postgres;Database=core;Username=postgres;Password=postgres
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # Profil: core zaten compose'ta var; override sadece davranışı değiştiriyor
+
+  perf-api:
+    image: mcr.microsoft.com/dotnet/sdk:9.0
+    working_dir: /workspace
+    volumes:
+      - ./src/Perf.Api:/workspace
+    command: >
+      bash -lc "
+      dotnet restore &&
+      dotnet watch run --no-launch-profile --urls http://0.0.0.0:8080
+      "
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://0.0.0.0:8080
+      DOTNET_USE_POLLING_FILE_WATCHER: "1"
+      DOTNET_WATCH_SUPPRESS_LAUNCH_BROWSER: "1"
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
+    depends_on:
+      jaeger:
+        condition: service_started
+
+  comp-api:
+    image: mcr.microsoft.com/dotnet/sdk:9.0
+    working_dir: /workspace
+    volumes:
+      - ./src/Comp.Api:/workspace
+    command: >
+      bash -lc "
+      dotnet restore &&
+      dotnet watch run --no-launch-profile --urls http://0.0.0.0:8080
+      "
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://0.0.0.0:8080
+      DOTNET_USE_POLLING_FILE_WATCHER: "1"
+      DOTNET_WATCH_SUPPRESS_LAUNCH_BROWSER: "1"
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
+    depends_on:
+      jaeger:
+        condition: service_started
+
+  gateway:
+    image: mcr.microsoft.com/dotnet/sdk:9.0
+    working_dir: /workspace
+    volumes:
+      - ./src/Gateway:/workspace
+    command: >
+      bash -lc "
+      dotnet restore &&
+      dotnet watch run --no-launch-profile --urls http://0.0.0.0:8080
+      "
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://0.0.0.0:8080
+      DOTNET_USE_POLLING_FILE_WATCHER: "1"
+      DOTNET_WATCH_SUPPRESS_LAUNCH_BROWSER: "1"
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
+      # Hybrid debug istersek aşağıdaki CORE_BASE/PERF_BASE/COMP_BASE ile host'a yönlendirebiliriz:
+      # CORE_BASE: "http://host.docker.internal:5080"
+      # PERF_BASE: "http://host.docker.internal:5081"
+      # COMP_BASE: "http://host.docker.internal:5082"
+    depends_on:
+      jaeger:
+        condition: service_started
+      core-api:
+        condition: service_started
+      perf-api:
+        condition: service_started
+      comp-api:
+        condition: service_started
+    ports:
+      - "8080:8080"
+    # Linux'ta host.docker.internal gerekiyorsa:
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
