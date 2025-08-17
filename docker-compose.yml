@@ -8,12 +8,30 @@ services:
     profiles: ["infra"]
 
   # Backends
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: core  
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres -d core" ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    ports: [ "5432:5432" ]
+    volumes: [ "pg:/var/lib/postgresql/data" ]
+    profiles: [ "infra" ]
+    
   core-api:
     build: { context: ./src/Core.Api, dockerfile: Dockerfile }
     environment:
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
-    depends_on: [jaeger]
-    profiles: ["core"]
+      ConnectionStrings__Default: Host=postgres;Database=core;Username=postgres;Password=postgres
+    depends_on:
+      postgres:
+        condition: service_healthy
+    profiles: [ "core" ]
 
   perf-api:
     build: { context: ./src/Perf.Api, dockerfile: Dockerfile }
@@ -36,3 +54,6 @@ services:
     ports: ["8080:8080"]
     depends_on: [jaeger, core-api, perf-api, comp-api]
     profiles: ["gw"]
+    
+volumes:
+  pg: { }

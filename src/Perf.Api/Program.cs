@@ -20,6 +20,12 @@ builder.Services.AddOpenTelemetry()
 
 var app = builder.Build();
 
+app.MapGet("/echo-tenant", (HttpContext ctx) =>
+{
+    var t = ctx.Request.Headers["X-Tenant-Id"].ToString();
+    return Results.Ok(new { tenant = t });
+});
+
 app.MapGet("/health", () => Results.Ok(new { status = "ok", service = serviceName }));
 app.MapGet("/ready", () => Results.Ok(new { ready = true, service = serviceName }));
 
