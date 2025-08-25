@@ -88,6 +88,7 @@ app.MapGet("/internal/tenants/{tenantId:guid}/modules", (Guid tenantId, CoreDbCo
     return Results.Ok(modules);
 });
 
+
 // ---- AUTO MIGRATION ----
 using (var scope = app.Services.CreateScope())
 {

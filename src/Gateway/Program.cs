@@ -1,9 +1,15 @@
+using System.Text.Json;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Primitives;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 using Yarp.ReverseProxy;
 using Yarp.ReverseProxy.Configuration;
+
+JsonSerializerOptions JsonOpts = new()
+{
+    PropertyNameCaseInsensitive = true
+};
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -80,7 +86,6 @@ app.Use(async (ctx, next) =>
         ? v.ToString()
         : Guid.NewGuid().ToString("N");
 
-    // Body yazımı başlamadan ekle
     ctx.Response.OnStarting(() =>
     {
         ctx.Response.Headers["X-Correlation-Id"] = cid;
@@ -91,22 +96,37 @@ app.Use(async (ctx, next) =>
 });
 
 /* ------------- Tenant Resolver --------------- */
-/* Sadece /api/perf/** ve /api/comp/** için çalışsın. /api/core/**, /health, /ready vb. bypass. */
+/* Sadece /api/perf/** ve /api/comp/** için resolve et; diğer tüm yollar BYPASS. */
 app.Use(async (ctx, next) =>
 {
     var path = ctx.Request.Path.Value ?? "/";
-    bool isPerf = path.StartsWith("/api/perf/", StringComparison.OrdinalIgnoreCase);
-    bool isComp = path.StartsWith("/api/comp/", StringComparison.OrdinalIgnoreCase);
+    var segs = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
 
-    if (!(isPerf || isComp))
+    bool isApi  = segs.Length >= 1 && segs[0].Equals("api",  StringComparison.OrdinalIgnoreCase);
+    bool isPerf = isApi && segs.Length >= 2 && segs[1].Equals("perf", StringComparison.OrdinalIgnoreCase);
+    bool isComp = isApi && segs.Length >= 2 && segs[1].Equals("comp", StringComparison.OrdinalIgnoreCase);
+
+    // /api değilse ya da /api/core/** ise → BYPASS
+    if (!isApi || !(isPerf || isComp))
     {
-        await next();   // core/internal ve diğer tüm istekler doğrudan proxy'ye gitsin
+        await next();
         return;
     }
 
-    var host = ctx.Request.Host.Host.ToLowerInvariant();
-    var firstSeg = path.Split('/', StringSplitOptions.RemoveEmptyEntries).Skip(1).FirstOrDefault(); // perf|comp'dan sonrası
+    // /api/(perf|comp)/(health|ready|metrics) → BYPASS
+    if (segs.Length >= 3 &&
+        (segs[2].Equals("health",  StringComparison.OrdinalIgnoreCase) ||
+         segs[2].Equals("ready",   StringComparison.OrdinalIgnoreCase) ||
+         segs[2].Equals("metrics", StringComparison.OrdinalIgnoreCase)))
+    {
+        await next();
+        return;
+    }
 
+    // /api/(perf|comp)/{slug}/... → slug = üçüncü segment
+    string? slug = segs.Length >= 3 ? segs[2] : null;
+
+    var host = ctx.Request.Host.Host.ToLowerInvariant();
     var cache = ctx.RequestServices.GetRequiredService<IMemoryCache>();
     var http  = ctx.RequestServices.GetRequiredService<IHttpClientFactory>().CreateClient("core");
 
@@ -119,7 +139,7 @@ app.Use(async (ctx, next) =>
             using var res = await http.GetAsync($"/internal/domains/{host}", ctx.RequestAborted);
             if (!res.IsSuccessStatusCode) return null;
             var json = await res.Content.ReadAsStringAsync(ctx.RequestAborted);
-            return System.Text.Json.JsonSerializer.Deserialize<DomainMapDto>(json);
+            return JsonSerializer.Deserialize<DomainMapDto>(json, JsonOpts);
         }
         catch { return null; }
     });
@@ -130,13 +150,13 @@ app.Use(async (ctx, next) =>
     {
         tenantId = map.TenantId; // özel domain
     }
-    else if (map?.PathMode == "slug" && !string.IsNullOrEmpty(firstSeg))
+    else if (map?.PathMode == "slug" && !string.IsNullOrEmpty(slug))
     {
-        using var res = await http.GetAsync($"/internal/tenants/resolve/{firstSeg}", ctx.RequestAborted);
+        using var res = await http.GetAsync($"/internal/tenants/resolve/{slug}", ctx.RequestAborted);
         if (res.IsSuccessStatusCode)
         {
-            var dto = System.Text.Json.JsonSerializer.Deserialize<TenantResolveDto>(
-                await res.Content.ReadAsStringAsync(ctx.RequestAborted));
+            var body = await res.Content.ReadAsStringAsync(ctx.RequestAborted);
+            var dto  = JsonSerializer.Deserialize<TenantResolveDto>(body, JsonOpts);
             tenantId = dto?.tenantId;
         }
     }
@@ -151,7 +171,7 @@ app.Use(async (ctx, next) =>
 
     // Propagate
     ctx.Request.Headers["X-Tenant-Id"] = tenantId;
-    ctx.Request.Headers["X-Host"] = host;
+    ctx.Request.Headers["X-Host"]      = host;
 
     await next();
 });
