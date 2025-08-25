@@ -3,6 +3,7 @@ using System;
 using Core.Api.Infrastructure;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Core.Api.Migrations
 {
     [DbContext(typeof(CoreDbContext))]
-    partial class CoreDbContextModelSnapshot : ModelSnapshot
+    [Migration("20250825204357_M3_Tenants_and_Domains")]
+    partial class M3_Tenants_and_Domains
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -82,9 +85,7 @@ namespace Core.Api.Migrations
                         .HasColumnType("uuid");
 
                     b.Property<DateTime>("CreatedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("timestamp with time zone")
-                        .HasDefaultValueSql("NOW() AT TIME ZONE 'utc'");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -111,7 +112,7 @@ namespace Core.Api.Migrations
                         new
                         {
                             Id = new Guid("a0cb8251-16bc-6bde-cc66-5d76b0c7b0ac"),
-                            CreatedAt = new DateTime(2025, 8, 25, 0, 0, 0, 0, DateTimeKind.Utc),
+                            CreatedAt = new DateTime(2025, 8, 25, 20, 43, 57, 58, DateTimeKind.Utc).AddTicks(9480),
                             Name = "Firm 1",
                             Slug = "firm1",
                             Status = "active"
@@ -119,7 +120,7 @@ namespace Core.Api.Migrations
                         new
                         {
                             Id = new Guid("44709835-d55a-ef2a-2327-5fdca19e55d8"),
-                            CreatedAt = new DateTime(2025, 8, 25, 0, 0, 0, 0, DateTimeKind.Utc),
+                            CreatedAt = new DateTime(2025, 8, 25, 20, 43, 57, 58, DateTimeKind.Utc).AddTicks(9620),
                             Name = "Firm 2",
                             Slug = "firm2",
                             Status = "active"
