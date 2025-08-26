@@ -1,3 +1,4 @@
+using Core.Api.Domain;
 using Core.Api.Infrastructure;
 using Microsoft.EntityFrameworkCore;
 
@@ -9,11 +10,28 @@ public static class InternalDomainEndpoints
     {
         app.MapGet("/internal/domains/{host}", async (string host, CoreDbContext db) =>
         {
-            var map = await db.DomainMappings.AsNoTracking()
-                .FirstOrDefaultAsync(x => x.Host == host && x.IsActive);
-            return map is null
-                ? Results.NotFound(new { error = "domain_not_mapped", host })
-                : Results.Ok(map);
+            var h = host.Trim().ToLowerInvariant();
+
+            var map = await db.DomainMappings
+                .AsNoTracking()
+                .FirstOrDefaultAsync(x => x.Host == h && x.IsActive);
+
+            if (map is null)
+                return Results.NotFound(new { error = "domain_not_found", host = h });
+
+            // enum → int projeksiyonu (gateway ile birebir)
+            var dto = new
+            {
+                id         = map.Id,
+                host       = map.Host,
+                module     = (int)map.Module,                // enum → int
+                tenantId   = map.TenantId,                   // Guid? → string serileşir
+                pathMode   = map.PathMode == PathMode.slug ? 1 : 0, // slug=1, host=0
+                tenantSlug = map.TenantSlug,
+                isActive   = map.IsActive
+            };
+
+            return Results.Json(dto);
         });
 
         return app;

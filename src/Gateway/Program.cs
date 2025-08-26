@@ -1,18 +1,17 @@
+using System.Net.Http.Json;
 using System.Text.Json;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Primitives;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
-using Yarp.ReverseProxy;
 using Yarp.ReverseProxy.Configuration;
 
-JsonSerializerOptions JsonOpts = new()
-{
-    PropertyNameCaseInsensitive = true
-};
+var jsonOpts = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
 
 var builder = WebApplication.CreateBuilder(args);
 
+// --- OpenTelemetry ---
 builder.Services.AddOpenTelemetry()
     .WithTracing(t =>
     {
@@ -26,9 +25,11 @@ builder.Services.AddOpenTelemetry()
          });
     });
 
+// --- Services ---
 builder.Services.AddMemoryCache();
 builder.Services.AddHttpClient("core", c => c.BaseAddress = new Uri("http://core-api:8080"));
 
+// --- YARP (in-memory) ---
 builder.Services.AddReverseProxy().LoadFromMemory(
     routes: new[]
     {
@@ -80,7 +81,7 @@ builder.Services.AddReverseProxy().LoadFromMemory(
 var app = builder.Build();
 
 /* ---------------- Correlation ---------------- */
-app.Use(async (ctx, next) =>
+app.Use(async (HttpContext ctx, RequestDelegate next) =>
 {
     var cid = ctx.Request.Headers.TryGetValue("X-Correlation-Id", out var v) && !StringValues.IsNullOrEmpty(v)
         ? v.ToString()
@@ -92,12 +93,11 @@ app.Use(async (ctx, next) =>
         return Task.CompletedTask;
     });
 
-    await next();
+    await next(ctx);
 });
 
 /* ------------- Tenant Resolver --------------- */
-/* Sadece /api/perf/** ve /api/comp/** için resolve et; diğer tüm yollar BYPASS. */
-app.Use(async (ctx, next) =>
+app.Use(async (HttpContext ctx, RequestDelegate next) =>
 {
     var path = ctx.Request.Path.Value ?? "/";
     var segs = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
@@ -106,27 +106,17 @@ app.Use(async (ctx, next) =>
     bool isPerf = isApi && segs.Length >= 2 && segs[1].Equals("perf", StringComparison.OrdinalIgnoreCase);
     bool isComp = isApi && segs.Length >= 2 && segs[1].Equals("comp", StringComparison.OrdinalIgnoreCase);
 
-    // /api değilse ya da /api/core/** ise → BYPASS
-    if (!isApi || !(isPerf || isComp))
-    {
-        await next();
-        return;
-    }
+    if (!(isPerf || isComp))
+    {   await next(ctx); return; }
 
-    // /api/(perf|comp)/(health|ready|metrics) → BYPASS
-    if (segs.Length >= 3 &&
-        (segs[2].Equals("health",  StringComparison.OrdinalIgnoreCase) ||
-         segs[2].Equals("ready",   StringComparison.OrdinalIgnoreCase) ||
-         segs[2].Equals("metrics", StringComparison.OrdinalIgnoreCase)))
-    {
-        await next();
-        return;
-    }
+    if (segs.Length >= 3 && (segs[2].Equals("health",  StringComparison.OrdinalIgnoreCase) ||
+                             segs[2].Equals("ready",   StringComparison.OrdinalIgnoreCase) ||
+                             segs[2].Equals("metrics", StringComparison.OrdinalIgnoreCase)))
+    {   await next(ctx); return; }
 
-    // /api/(perf|comp)/{slug}/... → slug = üçüncü segment
     string? slug = segs.Length >= 3 ? segs[2] : null;
-
     var host = ctx.Request.Host.Host.ToLowerInvariant();
+
     var cache = ctx.RequestServices.GetRequiredService<IMemoryCache>();
     var http  = ctx.RequestServices.GetRequiredService<IHttpClientFactory>().CreateClient("core");
 
@@ -138,30 +128,41 @@ app.Use(async (ctx, next) =>
         {
             using var res = await http.GetAsync($"/internal/domains/{host}", ctx.RequestAborted);
             if (!res.IsSuccessStatusCode) return null;
-            var json = await res.Content.ReadAsStringAsync(ctx.RequestAborted);
-            return JsonSerializer.Deserialize<DomainMapDto>(json, JsonOpts);
+            return await res.Content.ReadFromJsonAsync<DomainMapDto>(
+                new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true },
+                ctx.RequestAborted);
         }
         catch { return null; }
     });
 
     string? tenantId = null;
 
-    if (map?.TenantId is not null)
+    if (map is not null)
     {
-        tenantId = map.TenantId; // özel domain
-    }
-    else if (map?.PathMode == "slug" && !string.IsNullOrEmpty(slug))
-    {
-        using var res = await http.GetAsync($"/internal/tenants/resolve/{slug}", ctx.RequestAborted);
-        if (res.IsSuccessStatusCode)
+        if (!string.IsNullOrEmpty(map.TenantId))
         {
-            var body = await res.Content.ReadAsStringAsync(ctx.RequestAborted);
-            var dto  = JsonSerializer.Deserialize<TenantResolveDto>(body, JsonOpts);
+            tenantId = map.TenantId; // hard mapping (özel domain)
+        }
+        else if (map.PathMode == 1 /* slug */ && !string.IsNullOrEmpty(slug))
+        {
+            var dto = await http.GetFromJsonAsync<TenantResolveDto>(
+                $"/internal/tenants/resolve/{slug}",
+                new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true },
+                ctx.RequestAborted);
+            tenantId = dto?.tenantId;
+        }
+        else if (map.PathMode == 0 /* host */)
+        {
+            var dto = await http.GetFromJsonAsync<TenantResolveDto>(
+                $"/internal/tenants/by-host/{host}",
+                new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true },
+                ctx.RequestAborted);
             tenantId = dto?.tenantId;
         }
     }
 
-    // tenant bulunamadıysa perf/comp için hata ver
+    tenantId ??= ctx.Request.Headers["X-Tenant-Id"].FirstOrDefault();
+
     if (string.IsNullOrEmpty(tenantId))
     {
         ctx.Response.StatusCode = StatusCodes.Status400BadRequest;
@@ -169,13 +170,11 @@ app.Use(async (ctx, next) =>
         return;
     }
 
-    // Propagate
     ctx.Request.Headers["X-Tenant-Id"] = tenantId;
-    ctx.Request.Headers["X-Host"]      = host;
+    ctx.Request.Headers["X-Host"] = host;
 
-    await next();
+    await next(ctx);
 });
-
 var serviceName = "gateway";
 
 /* --------------- Health/Ready ---------------- */
@@ -193,8 +192,10 @@ app.MapReverseProxy();
 
 app.Run("http://0.0.0.0:8080");
 
-/* DTOs */
-record DomainMapDto(string Host, string Module, string? TenantId, string PathMode, string? TenantSlug, bool IsActive);
+/* DTOs & Enums (Core API sayısal enum döndürüyor) */
+public enum PathModeDto { host = 0, slug = 1 }
+
+record DomainMapDto(string Host, int Module, string? TenantId, int PathMode, string? TenantSlug, bool IsActive);
 record TenantResolveDto(string tenantId);
 
 public partial class Program { }

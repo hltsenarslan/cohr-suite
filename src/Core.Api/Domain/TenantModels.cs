@@ -3,7 +3,6 @@ using Microsoft.EntityFrameworkCore;
 namespace Core.Api.Domain;
 
 public enum ModuleKind { performance, compensation }
-public enum PathMode   { none, slug }
 
 public class DomainMapping
 {

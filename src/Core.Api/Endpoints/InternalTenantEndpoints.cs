@@ -7,30 +7,39 @@ public static class InternalTenantEndpoints
 {
     public static IEndpointRouteBuilder MapInternalTenantEndpoints(this IEndpointRouteBuilder app)
     {
-        // slug -> tenantId
-        app.MapGet("/internal/tenants/resolve/{slug}", async (string slug, CoreDbContext db) =>
+        var grp = app.MapGroup("/internal/tenants");
+
+        // /internal/tenants/resolve/{slug}  → 200 { tenantId }  |  400 { error, slug }
+        grp.MapGet("/resolve/{slug}", async (string slug, CoreDbContext db) =>
         {
-            var t = await db.Tenants.AsNoTracking()
-                .Where(x => x.Slug == slug)
-                .Select(x => new { tenantId = x.Id })
+            var s = slug.Trim().ToLowerInvariant();
+
+            var id = await db.Tenants.AsNoTracking()
+                .Where(t => t.Slug == s)
+                .Select(t => t.Id)
                 .FirstOrDefaultAsync();
 
-            return t is null
-                ? Results.NotFound(new { error = "tenant_not_found", slug })
-                : Results.Ok(t);
+            if (id == Guid.Empty)
+                return Results.BadRequest(new { error = "tenant_not_found", slug = s });
+
+            return Results.Ok(new { tenantId = id });
         });
 
-        // opsiyonel: host -> tenantId
-        app.MapGet("/internal/tenants/by-host/{host}", async (string host, CoreDbContext db) =>
+        // /internal/tenants/by-host/{host}  → 200 { tenantId }  |  400 { error, host }
+        grp.MapGet("/by-host/{host}", async (string host, CoreDbContext db) =>
         {
-            var t = await db.TenantDomains.AsNoTracking()
-                .Where(d => d.Host == host)
-                .Select(d => new { tenantId = d.TenantId })
+            var h = host.Trim().ToLowerInvariant();
+
+            var id = await db.TenantDomains.AsNoTracking()
+                .Where(d => d.Host == h)
+                .OrderByDescending(d => d.IsDefault) // varsa default’u tercih et
+                .Select(d => d.TenantId)
                 .FirstOrDefaultAsync();
 
-            return t is null
-                ? Results.NotFound(new { error = "domain_not_mapped", host })
-                : Results.Ok(t);
+            if (id == Guid.Empty)
+                return Results.BadRequest(new { error = "tenant_not_found_for_host", host = h });
+
+            return Results.Ok(new { tenantId = id });
         });
 
         return app;
