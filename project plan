@@ -1,0 +1,183 @@
+MS4 — Tenant-aware servisler (Perf/Comp) ve veri izolasyonu
+
+Amaç: X-Tenant-Id tüm servislerde zorunlu olsun; tüm sorgular tenant filtresiyle çalışsın.
+
+İşler
+	•	Perf.Api & Comp.Api
+	•	TenantContext middleware: X-Tenant-Id yoksa 400.
+	•	ITenantContext DI + TenantId expose.
+	•	EF Core global query filter: HasQueryFilter(x => x.TenantId == _tenantCtx.Id).
+	•	SaveChanges öncesi yeni kayıtlara TenantId yazan SaveChangesInterceptor.
+	•	Seed
+	•	Her serviste 2 tenant’a ait örnek veri (Firm1/Firm2).
+	•	Gateway
+	•	Zaten eklediğimiz resolver ile X-Tenant-Id propagate; tenant çözülemezse 400.
+
+Demo / çıktı
+	•	GET /perf/me, GET /comp/me → header’daki tenant’a göre farklı JSON.
+	•	Örnek listeleme: GET /perf/goals, GET /comp/payrolls → sadece kendi tenant’ının verileri.
+
+Test
+	•	Doğru tenant → 200, içerik ilgili tenant’a ait.
+	•	Header yok → 400 (tenant_required).
+	•	Tenant A’nın verisi → Tenant B’de asla görünmüyor (aynı endpoint, farklı header).
+
+⸻
+
+MS5 — Kimlik & Yetki (AuthN/Z) + SSO hazırlığı
+
+Amaç: Basit RBAC ve JWT oturum; ileride SSO’ya evrilebilir.
+
+İşler
+	•	Core DB şema:
+	•	Users, UserTenants(userId, tenantId, role), Roles, Permissions (opt).
+	•	Auth akışı:
+	•	POST /auth/login (email+pwd mock/seed) → HS256 JWT üret.
+	•	Claims: sub, email, tenantId (opsiyonel), roles.
+	•	Servis koruması:
+	•	Perf/Comp: [Authorize] veya minimal filter; şimdilik “header + JWT birlikte” kabul (ileride sadece JWT).
+	•	Gateway
+	•	Şimdilik yalnızca header üzerinden çalışmaya devam (JWT doğrulama hazırlığı: kapatılabilir flag).
+
+Demo / çıktı
+	•	FE test sayfası: login → token sakla → protected endpoint’lere istek.
+
+Test
+	•	Yanlış şifre → 401.
+	•	Roller: admin erişebilir, viewer erişemez → 403.
+
+⸻
+
+MS6 — Subscription & Feature Flag (plan/özellik/limit)
+
+Amaç: Tenant hangi modülleri/özellikleri kullanır, limitleri nedir? Uygulamada enforcement.
+
+İşler
+	•	Core şema:
+	•	Plans, PlanFeatures(planId, featureKey, quota),
+	•	TenantSubscriptions(tenantId, planId, status, period),
+	•	UsageCounters(tenantId, featureKey, period, used).
+	•	Feature provider:
+	•	IFeatureGate → IsEnabled(tenantId,"perf.module"), quota kontrolleri.
+	•	Enforcement:
+	•	Perf/Comp endpoint filtreleri → featureKey kontrolü; limit aşımında 402/403.
+	•	Admin API:
+	•	Plan CRUD, tenant’a plan atama, kullanım artışı raporu.
+
+Demo / çıktı
+	•	Firm1 planı “Perf Only”, Firm2 “Perf+Comp”.
+	•	Firm1 comp endpointine 403 feature_not_enabled.
+
+Test
+	•	Plan değiştir → anında davranış değişir.
+	•	Kullanım limiti aşımı → 402 quota_exceeded.
+
+⸻
+
+MS7 — Misc Platform v1 (Dosya/Storage + Bildirim iskeleti)
+
+Amaç: Sunucuda depolama; güvenli dosyalar için imzalı kısa ömürlü URL. Bildirim servisi iskeleti.
+
+İşler
+	•	Misc.Api – Files
+	•	POST /files (multipart, isSecure), GET /files/{id}, POST /files/{id}/tokens, DELETE /files/{id}.
+	•	Disk hiyerarşisi: /data/files/{tenantId}/{public|secure}/yyyy/MM/dd/....
+	•	DB: Files(Id, TenantId, IsSecure, RelPath, ContentType, Size, Sha256, CreatedAt).
+	•	İmzalı URL: HMAC-SHA256 token fileId|tenantId|exp (env: MISC_SIGNING_KEY).
+	•	Bildirim iskeleti
+	•	POST /notify → şimdilik log’a yaz; MS8’de kanallar.
+
+Demo / çıktı
+	•	Public dosya → url’den direkt 200.
+	•	Secure dosya → direkt 401, token üret → 200.
+
+Test
+	•	Farklı tenant secure dosyasına erişim → 403.
+	•	Büyük dosya limit aşıldığında 413 (env MAX_UPLOAD_MB).
+
+⸻
+
+MS8 — Raporlama & Arkaplan İşleri
+
+Amaç: Asenkron rapor üretimi ve job altyapısı.
+
+İşler
+	•	Job altyapısı: Quartz.NET (veya Hangfire – profil karar).
+	•	API:
+	•	POST /reports/run {report, params} → 202 + reportId
+	•	GET /reports/{id} → durum + hazırsa dosya URL (Misc’den).
+	•	Örnek rapor: “Perf – hedef listesi (CSV/PDF)” (tenant scoped).
+	•	Audit: ReportJobs tablosu.
+
+Demo / çıktı
+	•	Run → bir süre sonra done → indirilebilir dosya.
+
+Test
+	•	Yanlış rapor adı → 400.
+	•	Tokenlı erişim → secure dosya kuralları.
+
+⸻
+
+MS9 — Cache & Performans
+
+Amaç: Core lookup’larını hızlandır; Gateway ve servisler için temel caching/limit.
+
+İşler
+	•	Redis entegrasyonu (Docker profile cache).
+	•	Gateway:
+	•	dom:{host} ve slug:{slug} sonuçlarını 60–120 sn cache (şimdiki mem-cache’e Redis opsiyonu).
+	•	Basit rate limit (IP/tenant başına) – YARP veya middleware.
+	•	Servisler:
+	•	Sık okunan listelemeler için IMemoryCache/Redis hybrid.
+
+Test
+	•	Cache ısınması sonrası RPS artışı, latency düşüşü (quick benchmark).
+
+⸻
+
+MS10 — Gözlemlenebilirlik (Observability) Sertleştirme
+
+Amaç: Tracing, log korelasyonu, metrikler.
+
+İşler
+	•	OpenTelemetry span adları, önemli etiketler (tenant.id, host, feature).
+	•	X-Correlation-Id propagation (zaten var) → tüm servis/HttpClient.
+	•	Jaeger’de basit dashboard tarifi; (opsiyonel) Loki/Grafana profile.
+
+Test
+	•	Bir smoke akışının tek trace’te uçtan uca görülebilmesi.
+
+⸻
+
+MS11 — Lokal Geliştirme ve DX
+
+Amaç: Hızlı debug ve tekrar üretilebilir ortam.
+
+İşler
+	•	docker compose profilleri: infra, core, perf, comp, misc, gw.
+	•	dotnet watch profilleri, docker-compose.override.yml ile bind-mount + hot-reload.
+	•	Tek komutla seed/temizle scriptleri (zaten var → finalize).
+
+⸻
+
+MS12 — Güvenlik Geçişi
+
+Amaç: Güvenli varsayılanlar.
+
+İşler
+	•	CORS, güvenli header’lar (HSTS, X-Content-Type-Options vs).
+	•	Dosya yüklemeleri için tip doğrulama + (opsiyonel) ClamAV taraması.
+	•	Admin API key rotation, minimal RBAC.
+	•	Audit loglar.
+
+⸻
+
+MS13 — CI/CD & Versiyonlama
+
+Amaç: Otomatik build, test, tag, publish.
+
+İşler
+	•	GitHub Actions (veya GitLab CI):
+	•	PR build + test, docker image push (ghcr).
+	•	v0.4.0 tag → release notes + compose bundle.
+	•	Migrations otomasyonu (entrypoint’te dotnet ef database update pattern’i).
