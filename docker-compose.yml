@@ -1,19 +1,14 @@
+# docker-compose.yml  (ilgili kısımları ekle/değiştir)
 version: "3.9"
 
 services:
-  # Observability
-  jaeger:
-    image: jaegertracing/all-in-one:1.57
-    ports: ["16686:16686", "4317:4317"]
-    profiles: ["infra"]
-
-  # Backends
+  # --- infra ---
   postgres:
     image: postgres:16
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: core  
+      POSTGRES_DB: core
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U postgres -d core" ]
       interval: 5s
@@ -22,38 +17,80 @@ services:
     ports: [ "5432:5432" ]
     volumes: [ "pg:/var/lib/postgresql/data" ]
     profiles: [ "infra" ]
-    
+
+  perf-db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: perf
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres -d perf" ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    ports: [ "5433:5432" ]   # local debug için
+    volumes: [ "pg-perf:/var/lib/postgresql/data" ]
+    profiles: [ "infra" ]
+
+  comp-db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: comp
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres -d comp" ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    ports: [ "5434:5432" ]   # local debug için
+    volumes: [ "pg-comp:/var/lib/postgresql/data" ]
+    profiles: [ "infra" ]
+
+  # --- apis ---
   core-api:
-    build: { context: ./src/Core.Api, dockerfile: Dockerfile }
+    build: 
+      context: .                
+      dockerfile: src/Core.Api/Dockerfile 
     environment:
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
       ConnectionStrings__Default: Host=postgres;Database=core;Username=postgres;Password=postgres
     depends_on:
-      postgres:
-        condition: service_healthy
+      postgres: { condition: service_healthy }
     profiles: [ "core" ]
 
   perf-api:
-    build: { context: ./src/Perf.Api, dockerfile: Dockerfile }
+    build:
+      context: .
+      dockerfile: src/Perf.Api/Dockerfile
     environment:
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
-    depends_on: [jaeger]
-    profiles: ["perf"]
+      ConnectionStrings__Default: Host=perf-db;Database=perf;Username=postgres;Password=postgres
+    depends_on:
+      perf-db: { condition: service_healthy }
+    profiles: [ "perf" ]
 
   comp-api:
-    build: { context: ./src/Comp.Api, dockerfile: Dockerfile }
+    build:
+      context: .               
+      dockerfile: src/Comp.Api/Dockerfile
     environment:
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
-    depends_on: [jaeger]
-    profiles: ["comp"]
+      ConnectionStrings__Default: Host=comp-db;Database=comp;Username=postgres;Password=postgres
+    depends_on:
+      comp-db: { condition: service_healthy }
+    profiles: [ "comp" ]
 
   gateway:
     build: { context: ./src/Gateway, dockerfile: Dockerfile }
     environment:
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
-    ports: ["8080:8080"]
-    depends_on: [jaeger, core-api, perf-api, comp-api]
-    profiles: ["gw"]
-    
+    ports: [ "8080:8080" ]
+    depends_on: [ core-api, perf-api, comp-api ]  # jaeger opsiyonel
+    profiles: [ "gw" ]
+
 volumes:
   pg: { }
+  pg-perf: { }
+  pg-comp: { }

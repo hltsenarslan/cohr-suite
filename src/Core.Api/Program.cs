@@ -7,8 +7,11 @@ using OpenTelemetry.Trace;
 var builder = WebApplication.CreateBuilder(args);
 
 /* --- Services --- */
-builder.Services.AddDbContext<CoreDbContext>(o =>
-    o.UseNpgsql(builder.Configuration.GetConnectionString("Default")));
+if (!builder.Environment.IsEnvironment("Testing"))
+{
+    builder.Services.AddDbContext<CoreDbContext>(o =>
+        o.UseNpgsql(builder.Configuration.GetConnectionString("Default")));
+}
 
 builder.Services.AddOpenTelemetry()
     .WithTracing(t =>
@@ -26,19 +29,22 @@ builder.Services.AddOpenTelemetry()
 var app = builder.Build();
 
 /* --- Auto-migrate --- */
-using (var scope = app.Services.CreateScope())
+if (!app.Environment.IsEnvironment("Testing"))
 {
+    using var scope = app.Services.CreateScope();
     var db = scope.ServiceProvider.GetRequiredService<CoreDbContext>();
     db.Database.Migrate();
 }
 
 /* --- Map endpoints --- */
-app.MapHealthEndpoints();            // /health, /ready
-app.MapInternalDomainEndpoints();    // /internal/domains/{host}
-app.MapInternalTenantEndpoints();    // /internal/tenants/...
-app.MapAdminTenantEndpoints();       // /internal/admin/tenants
-app.MapAdminDomainEndpoints();       // /internal/admin/domains
+app.MapHealthEndpoints(); // /health, /ready
+app.MapInternalDomainEndpoints(); // /internal/domains/{host}
+app.MapInternalTenantEndpoints(); // /internal/tenants/...
+app.MapAdminTenantEndpoints(); // /internal/admin/tenants
+app.MapAdminDomainEndpoints(); // /internal/admin/domains
 
 app.Run("http://0.0.0.0:8080");
 
-public partial class Program { }
+public partial class Program
+{
+}

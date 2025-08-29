@@ -3,16 +3,19 @@ using Xunit;
 
 namespace Core.Api.Tests;
 
-public class HealthTests : IClassFixture<TestDatabaseFixture>
+public class HealthTests : IClassFixture<CoreWebAppFactory>
 {
-    private readonly TestDatabaseFixture _db;
-    public HealthTests(TestDatabaseFixture db) => _db = db;
+    private readonly HttpClient _client;
 
+    public HealthTests(CoreWebAppFactory factory)
+    {
+        _client = factory.CreateClient();
+    }
+    
     [Fact]
     public async Task Health_Should_Return_200()
     {
-        await using var app = new CustomWebApplicationFactory(_db.ConnectionString);
-        var res = await app.CreateClient().GetAsync("/health");
+        var res = await _client.GetAsync("/health");
         res.IsSuccessStatusCode.Should().BeTrue();
     }
 }

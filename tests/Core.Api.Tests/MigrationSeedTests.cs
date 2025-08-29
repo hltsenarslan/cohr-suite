@@ -5,21 +5,20 @@ using Xunit;
 
 namespace Core.Api.Tests;
 
-public class MigrationSeedTests : IClassFixture<TestDatabaseFixture>
+public class MigrationSeedTests : IClassFixture<CoreWebAppFactory>
 {
-    private readonly TestDatabaseFixture _db;
+    private readonly HttpClient _client;
 
-    public MigrationSeedTests(TestDatabaseFixture db) => _db = db;
-
+    public MigrationSeedTests(CoreWebAppFactory factory)
+    {
+        _client = factory.CreateClient();
+    }
     [Fact]
     public async Task App_Should_Migrate_And_Seed_DomainMappings()
     {
-        // Custom factory: Core.Api uygulamasını test DB'si ile başlat
-        await using var appFactory = new CustomWebApplicationFactory(_db.ConnectionString);
-        using var client = appFactory.CreateClient();
 
         // Act
-        var res  = await client.GetAsync("/internal/domains/pys.local");
+        var res  = await _client.GetAsync("/internal/domains/pys.local");
         res.EnsureSuccessStatusCode();
 
         var dto = await res.Content.ReadFromJsonAsync<DomainMappingDto>();
@@ -27,11 +26,11 @@ public class MigrationSeedTests : IClassFixture<TestDatabaseFixture>
         // Assert
         dto.Should().NotBeNull();
         dto!.host.Should().Be("pys.local");
-        dto.module.Should().Be("performance");
-        dto.pathMode.Should().Be("slug");
+        dto.module.Should().Be(0);
+        dto.pathMode.Should().Be(1);
     }
 
     // Test için minimal DTO
     private record DomainMappingDto(
-        Guid id, string host, string module, Guid? tenantId, string pathMode, string? tenantSlug, bool isActive);
+        Guid id, string host, int module, Guid? tenantId, int pathMode, string? tenantSlug, bool isActive);
 }

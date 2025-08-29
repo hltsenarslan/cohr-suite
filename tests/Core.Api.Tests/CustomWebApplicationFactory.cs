@@ -28,6 +28,8 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
 
             // Testcontainers Postgres connection string'i ile yeniden ekle
             services.AddDbContext<CoreDbContext>(opt => opt.UseNpgsql(_testConnectionString));
+            
+            
         });
     }
 }

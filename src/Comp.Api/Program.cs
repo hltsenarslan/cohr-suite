@@ -1,41 +1,40 @@
-using OpenTelemetry.Resources;
-using OpenTelemetry.Trace;
+using Common.Tenancy;
+using Comp.Api.Endpoints;
+using Comp.Api.Infrastructure;
+using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
-
-string serviceName = "comp-api";
-
-builder.Services.AddOpenTelemetry()
-    .WithTracing(t =>
+builder.Services.AddScoped<ITenantContext, TenantContext>();
+if (!builder.Environment.IsEnvironment("Testing"))
+{
+    builder.Services.AddDbContext<CompDbContext>(opt =>
     {
-        t.SetResourceBuilder(ResourceBuilder.CreateDefault().AddService(serviceName))
-            .AddAspNetCoreInstrumentation()
-            .AddHttpClientInstrumentation()
-            .AddOtlpExporter(o =>
-            {
-                o.Endpoint = new Uri(Environment.GetEnvironmentVariable("OTEL_EXPORTER_OTLP_ENDPOINT")
-                                     ?? "http://localhost:4317");
-            });
+        var cs = builder.Configuration.GetConnectionString("Default")
+                 ?? "Host=comp-db;Database=comp;Username=postgres;Password=postgres";
+        opt.UseNpgsql(cs);
     });
+}
+
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddTenancy();
 
 var app = builder.Build();
+app.UseMiddleware<TenantContextMiddleware>();
 
-app.MapGet("/health", () => Results.Ok(new { status = "ok", service = serviceName }));
-app.MapGet("/ready", () => Results.Ok(new { ready = true, service = serviceName }));
-app.MapGet("/{slug}/me", (HttpContext ctx, string slug) =>
+if (!app.Environment.IsEnvironment("Testing"))
 {
-    var tenant = ctx.Request.Headers["X-Tenant-Id"].ToString();
-    var host   = ctx.Request.Headers["X-Host"].ToString();
+    using var scope = app.Services.CreateScope();
+    var db = scope.ServiceProvider.GetRequiredService<CompDbContext>();
+    db.Database.Migrate(); // prod/dev’de migration
+}
 
-    if (string.IsNullOrEmpty(tenant))
-        return Results.BadRequest(new { error = "missing_tenant_header" });
 
-    return Results.Json(new {
-        service = "comp",
-        slug,
-        tenantId = tenant,
-        host
-    });
-});
+app.MapCompHealthEndpoints();
+app.UseTenantContext();
+app.MapCompMeEndpoints();
 
-app.Run("http://0.0.0.0:8080");
+app.Run();
+
+public partial class Program
+{
+}

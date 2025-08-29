@@ -25,8 +25,20 @@ public class CoreDbContext : DbContext
         b.Entity<Tenant>().Property(x => x.Name).HasMaxLength(200);
         b.Entity<Tenant>().Property(x => x.Slug).HasMaxLength(100);
         // DB default (deterministik model)
-        b.Entity<Tenant>().Property(x => x.CreatedAt)
-            .HasDefaultValueSql("NOW() AT TIME ZONE 'utc'");
+        
+        if (!Database.IsNpgsql())
+        {
+            // SQLite UTC zaten 'now' UTC döner
+            b.Entity<Tenant>().Property(x => x.CreatedAt)
+                .HasDefaultValueSql("CURRENT_TIMESTAMP"); // veya: "STRFTIME('%Y-%m-%d %H:%M:%f','now')"
+        }
+        else
+        {
+            // Postgres
+            b.Entity<Tenant>().Property(x => x.CreatedAt)
+                .HasDefaultValueSql("NOW() AT TIME ZONE 'utc'");
+        }
+        
 
         b.Entity<TenantDomain>().HasIndex(x => x.Host).IsUnique();
         b.Entity<TenantDomain>()

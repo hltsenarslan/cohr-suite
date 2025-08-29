@@ -1,47 +1,38 @@
-using OpenTelemetry.Resources;
-using OpenTelemetry.Trace;
+using Common.Tenancy;
+using Microsoft.EntityFrameworkCore;
+using Perf.Api.Infrastructure;
+using Perf.Api.Endpoints;
 
 var builder = WebApplication.CreateBuilder(args);
-
-string serviceName = "perf-api";
-
-builder.Services.AddOpenTelemetry()
-    .WithTracing(t =>
+builder.Services.AddScoped<ITenantContext, TenantContext>();
+if (!builder.Environment.IsEnvironment("Testing"))
+{
+    builder.Services.AddDbContext<PerfDbContext>(opt =>
     {
-        t.SetResourceBuilder(ResourceBuilder.CreateDefault().AddService(serviceName))
-            .AddAspNetCoreInstrumentation()
-            .AddHttpClientInstrumentation()
-            .AddOtlpExporter(o =>
-            {
-                o.Endpoint = new Uri(Environment.GetEnvironmentVariable("OTEL_EXPORTER_OTLP_ENDPOINT")
-                                     ?? "http://localhost:4317");
-            });
+        var cs = builder.Configuration.GetConnectionString("Default")
+                 ?? "Host=perf-db;Database=perf;Username=postgres;Password=postgres";
+        opt.UseNpgsql(cs);
     });
+}
+
+
+builder.Services.AddTenancy();
+builder.Services.AddEndpointsApiExplorer();
 
 var app = builder.Build();
+app.UseMiddleware<TenantContextMiddleware>();
 
-app.MapGet("/echo-tenant", (HttpContext ctx) =>
+if (!app.Environment.IsEnvironment("Testing"))
 {
-    var t = ctx.Request.Headers["X-Tenant-Id"].ToString();
-    return Results.Ok(new { tenant = t });
-});
+    using var scope = app.Services.CreateScope();
+    var db = scope.ServiceProvider.GetRequiredService<PerfDbContext>();
+    db.Database.Migrate(); // prod/dev’de migration
+}
 
-app.MapGet("/health", () => Results.Ok(new { status = "ok", service = serviceName }));
-app.MapGet("/ready", () => Results.Ok(new { ready = true, service = serviceName }));
-app.MapGet("/{slug}/me", (HttpContext ctx, string slug) =>
-{
-    var tenant = ctx.Request.Headers["X-Tenant-Id"].ToString();
-    var host   = ctx.Request.Headers["X-Host"].ToString();
+app.MapPerfHealthEndpoints();
+app.UseTenantContext();
+app.MapPerfMeEndpoints();
 
-    if (string.IsNullOrEmpty(tenant))
-        return Results.BadRequest(new { error = "missing_tenant_header" });
+app.Run();
 
-    return Results.Json(new {
-        service = "perf",
-        slug,
-        tenantId = tenant,
-        host
-    });
-});
-
-app.Run("http://0.0.0.0:8080");
+public partial class Program { }
