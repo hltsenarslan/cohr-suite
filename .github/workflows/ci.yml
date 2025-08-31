@@ -1,21 +1,90 @@
-name: ci
+name: CI
+
 on:
-  push: { branches: [ main ] }
+  push:
   pull_request:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  build-test:
+  build-test-smoke:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 9
+        uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: "9.0.x"
-      - name: Restore
-        run: dotnet restore
-      - name: Build
-        run: dotnet build --no-restore -c Release
-      - name: Test
+          dotnet-version: '9.0.x'
+
+      - name: Cache NuGet
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-
+
+      - name: Fast build & unit tests
+        run: |
+          dotnet restore
+          dotnet build -c Release --nologo
+          dotnet test -c Release --no-build --nologo
+
+      # Tüm stack’i ayağa kaldırıp EF bootstrap + seed yapıyoruz
+      - name: Compose up + EF bootstrap + seed + smoke (script)
         env:
-          DOTNET_ENVIRONMENT: CI
-        run: dotnet test --no-build -c Release
+          CI: "1"
+          EF_BOOTSTRAP: "1"
+          DO_SEED: "1"
+        run: |
+          chmod +x scripts/dev-up.sh
+          ./scripts/dev-up.sh
+
+      # Ek smoke: Host header ile gateway üzerinden kontrol
+      - name: Extra smoke checks
+        run: |
+          set -euo pipefail
+          # perf (slug mode)
+          curl --fail -sS -H "Host: pys.local" http://localhost:8080/api/perf/firm1/me | tee perf.json
+          grep -q '"service":"perf"' perf.json
+          # comp (default tenant)
+          curl --fail -sS -H "Host: pay.local" http://localhost:8080/api/comp/me | tee comp.json
+          grep -q '"tenant":"' comp.json
+
+      # Tag verilirse imajları GHCR'a push
+      - name: Login GHCR
+        if: startsWith(github.ref, 'refs/tags/')
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Tag & Push images to GHCR
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          set -e
+          TAG="${GITHUB_REF#refs/tags/}"
+          REPO_LC="$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')"
+          for s in core-api perf-api comp-api gateway; do
+            docker tag "cohr-suite-$s:latest" "ghcr.io/${REPO_LC}/$s:${TAG}"
+            docker push "ghcr.io/${REPO_LC}/$s:${TAG}"
+          done
+
+      - name: Dump docker logs on failure
+        if: failure()
+        run: |
+          docker ps -a
+          docker logs $(docker ps -aq) > docker-logs.txt || true
+
+      - name: Upload logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-logs
+          path: docker-logs.txt
+
+      - name: Teardown
+        if: always()
+        run: docker compose down -v --remove-orphans || true
