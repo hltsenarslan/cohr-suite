@@ -18,7 +18,7 @@ public static class MeEndpoints
         {
             // (Gateway slug’tan tenant’ı çözüp header’a koyuyor)
             return Results.Ok(new { service = "perf", slug, tenantId = tctx.Id, host = ctx.Request.Headers["X-Host"].ToString() });
-        });
+        }).RequireAuthorization(policy => policy.RequireRole("admin"));
 
         return app;
     }

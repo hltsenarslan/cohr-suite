@@ -1,3 +1,4 @@
+using System.IdentityModel.Tokens.Jwt;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.AspNetCore.Http;
@@ -27,7 +28,7 @@ builder.Services.AddOpenTelemetry()
 
 // --- Services ---
 builder.Services.AddMemoryCache();
-builder.Services.AddHttpClient("core", c => c.BaseAddress = new Uri("http://core-api:8080"));
+builder.Services.AddHttpClient("core", c => c.BaseAddress = new Uri(builder.Configuration["YarpConf:core"] ?? ""));
 
 // --- YARP (in-memory) ---
 builder.Services.AddReverseProxy().LoadFromMemory(
@@ -61,19 +62,19 @@ builder.Services.AddReverseProxy().LoadFromMemory(
         {
             ClusterId = "core",
             Destinations = new Dictionary<string, DestinationConfig>
-            { ["d1"] = new DestinationConfig { Address = "http://core-api:8080/" } }
+            { ["d1"] = new DestinationConfig { Address = builder.Configuration["YarpConf:core"] ?? "" } }
         },
         new ClusterConfig
         {
             ClusterId = "perf",
             Destinations = new Dictionary<string, DestinationConfig>
-            { ["d1"] = new DestinationConfig { Address = "http://perf-api:8080/" } }
+            { ["d1"] = new DestinationConfig { Address = builder.Configuration["YarpConf:perf"] ?? "" } }
         },
         new ClusterConfig
         {
             ClusterId = "comp",
             Destinations = new Dictionary<string, DestinationConfig>
-            { ["d1"] = new DestinationConfig { Address = "http://comp-api:8080/" } }
+            { ["d1"] = new DestinationConfig { Address = builder.Configuration["YarpConf:comp"] ?? "" } }
         }
     }
 );
@@ -141,7 +142,7 @@ app.Use(async (HttpContext ctx, RequestDelegate next) =>
     {
         if (!string.IsNullOrEmpty(map.TenantId))
         {
-            tenantId = map.TenantId; // hard mapping (özel domain)
+            tenantId = map.TenantId; // hard mapping
         }
         else if (map.PathMode == 1 /* slug */ && !string.IsNullOrEmpty(slug))
         {
@@ -161,7 +162,27 @@ app.Use(async (HttpContext ctx, RequestDelegate next) =>
         }
     }
 
+    // 2) header
     tenantId ??= ctx.Request.Headers["X-Tenant-Id"].FirstOrDefault();
+
+    // 3) JWT fallback (Authorization: Bearer ...)
+    tenantId ??= GetTenantIdFromJwt(ctx);
+
+    // (İsteğe bağlı) slug varsa ve JWT'den gelen tenantId farklıysa 403 yap:
+    if (!string.IsNullOrEmpty(slug) && !string.IsNullOrEmpty(tenantId) && map?.PathMode == 1)
+    {
+        // slug -> id tekrar çöz ve uyuşmazlıkta 403 ver
+        var check = await http.GetFromJsonAsync<TenantResolveDto>(
+            $"/internal/tenants/resolve/{slug}",
+            new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true },
+            ctx.RequestAborted);
+        if (check?.tenantId is string resolved && !string.Equals(resolved, tenantId, StringComparison.OrdinalIgnoreCase))
+        {
+            ctx.Response.StatusCode = StatusCodes.Status403Forbidden;
+            await ctx.Response.WriteAsJsonAsync(new { error = "tenant_mismatch", slug, jwtTenantId = tenantId });
+            return;
+        }
+    }
 
     if (string.IsNullOrEmpty(tenantId))
     {
@@ -175,6 +196,35 @@ app.Use(async (HttpContext ctx, RequestDelegate next) =>
 
     await next(ctx);
 });
+
+static string? GetTenantIdFromJwt(HttpContext ctx)
+{
+    // Eğer Gateway’de UseAuthentication çalışıyorsa önce buradan deneyebilirsin:
+    var claimFromUser = ctx.User?.FindFirst("tenantId")?.Value
+                        ?? ctx.User?.FindFirst("tid")?.Value
+                        ?? ctx.User?.FindFirst("tenant_id")?.Value;
+    if (!string.IsNullOrEmpty(claimFromUser))
+        return claimFromUser;
+
+    // Aksi halde sadece parse et (validation yok, salt claim okuma)
+    var auth = ctx.Request.Headers.Authorization.FirstOrDefault();
+    if (string.IsNullOrWhiteSpace(auth) || !auth.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+        return null;
+
+    var token = auth.Substring("Bearer ".Length).Trim();
+    try
+    {
+        var jwt = new JwtSecurityTokenHandler().ReadJwtToken(token);
+        return jwt.Claims.FirstOrDefault(c =>
+                c.Type == "tenantId" || c.Type == "tid" || c.Type == "tenant_id")
+            ?.Value;
+    }
+    catch
+    {
+        return null;
+    }
+}
+
 var serviceName = "gateway";
 
 /* --------------- Health/Ready ---------------- */
@@ -190,7 +240,8 @@ app.UseStaticFiles();
 /* ------------------ Proxy -------------------- */
 app.MapReverseProxy();
 
-app.Run("http://0.0.0.0:8080");
+var urls = builder.Configuration["ASPNETCORE_URLS"];
+app.Run(urls);
 
 /* DTOs & Enums (Core API sayısal enum döndürüyor) */
 public enum PathModeDto { host = 0, slug = 1 }

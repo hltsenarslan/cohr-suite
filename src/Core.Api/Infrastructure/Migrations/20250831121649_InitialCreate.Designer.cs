@@ -12,8 +12,8 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Core.Api.Infrastructure.Migrations
 {
     [DbContext(typeof(CoreDbContext))]
-    [Migration("20250830235910_Init")]
-    partial class Init
+    [Migration("20250831121649_InitialCreate")]
+    partial class InitialCreate
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -75,6 +75,36 @@ namespace Core.Api.Infrastructure.Migrations
                             IsActive = true,
                             Module = "compensation",
                             PathMode = "slug"
+                        });
+                });
+
+            modelBuilder.Entity("Core.Api.Domain.Role", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Name")
+                        .IsUnique();
+
+                    b.ToTable("Roles", (string)null);
+
+                    b.HasData(
+                        new
+                        {
+                            Id = new Guid("0f000000-0000-0000-0000-0000000000a1"),
+                            Name = "admin"
+                        },
+                        new
+                        {
+                            Id = new Guid("0f000000-0000-0000-0000-0000000000a2"),
+                            Name = "viewer"
                         });
                 });
 
@@ -171,6 +201,90 @@ namespace Core.Api.Infrastructure.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Core.Api.Domain.User", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true);
+
+                    b.Property<string>("PasswordHash")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Email")
+                        .IsUnique();
+
+                    b.ToTable("Users", (string)null);
+
+                    b.HasData(
+                        new
+                        {
+                            Id = new Guid("0e000000-0000-0000-0000-0000000000b1"),
+                            CreatedAt = new DateTime(1, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
+                            Email = "admin@firm1.local",
+                            IsActive = true,
+                            PasswordHash = "$2a$10$k4V0Ui0s5jJQk9S0iJYt9uYq2WmFQ7Y0yQ9bA4hQv8q1f9o8o0s3C"
+                        },
+                        new
+                        {
+                            Id = new Guid("0e000000-0000-0000-0000-0000000000b2"),
+                            CreatedAt = new DateTime(1, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified),
+                            Email = "viewer@firm2.local",
+                            IsActive = true,
+                            PasswordHash = "$2a$10$k4V0Ui0s5jJQk9S0iJYt9uYq2WmFQ7Y0yQ9bA4hQv8q1f9o8o0s3C"
+                        });
+                });
+
+            modelBuilder.Entity("Core.Api.Domain.UserTenant", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("RoleId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("UserId", "TenantId");
+
+                    b.HasIndex("RoleId");
+
+                    b.HasIndex("TenantId");
+
+                    b.ToTable("UserTenants", (string)null);
+
+                    b.HasData(
+                        new
+                        {
+                            UserId = new Guid("0e000000-0000-0000-0000-0000000000b1"),
+                            TenantId = new Guid("a0cb8251-16bc-6bde-cc66-5d76b0c7b0ac"),
+                            RoleId = new Guid("0f000000-0000-0000-0000-0000000000a1")
+                        },
+                        new
+                        {
+                            UserId = new Guid("0e000000-0000-0000-0000-0000000000b2"),
+                            TenantId = new Guid("44709835-d55a-ef2a-2327-5fdca19e55d8"),
+                            RoleId = new Guid("0f000000-0000-0000-0000-0000000000a2")
+                        });
+                });
+
             modelBuilder.Entity("Core.Api.Domain.TenantDomain", b =>
                 {
                     b.HasOne("Core.Api.Domain.Tenant", "Tenant")
@@ -182,9 +296,41 @@ namespace Core.Api.Infrastructure.Migrations
                     b.Navigation("Tenant");
                 });
 
+            modelBuilder.Entity("Core.Api.Domain.UserTenant", b =>
+                {
+                    b.HasOne("Core.Api.Domain.Role", "Role")
+                        .WithMany()
+                        .HasForeignKey("RoleId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Core.Api.Domain.Tenant", "Tenant")
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Core.Api.Domain.User", "User")
+                        .WithMany("UserTenants")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Role");
+
+                    b.Navigation("Tenant");
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("Core.Api.Domain.Tenant", b =>
                 {
                     b.Navigation("Domains");
+                });
+
+            modelBuilder.Entity("Core.Api.Domain.User", b =>
+                {
+                    b.Navigation("UserTenants");
                 });
 #pragma warning restore 612, 618
         }

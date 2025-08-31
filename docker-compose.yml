@@ -68,6 +68,10 @@ services:
       ASPNETCORE_ENVIRONMENT: Production
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
       ConnectionStrings__Default: Host=postgres;Database=core;Username=postgres;Password=postgres
+      JWT__ISSUER: cohr.suite
+      JWT__AUDIENCE: cohr.suite.clients
+      JWT__SIGNINGKEY: ${JWT_SIGNINGKEY:-dev-super-secret-change}
+      JWT__EXPIRESMINUTES: 60
     depends_on:
       postgres:
         condition: service_healthy
@@ -82,6 +86,10 @@ services:
       ASPNETCORE_ENVIRONMENT: Production
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
       ConnectionStrings__Default: Host=perf-db;Database=perf;Username=postgres;Password=postgres
+      JWT__ISSUER: cohr.suite
+      JWT__AUDIENCE: cohr.suite.clients
+      JWT__SIGNINGKEY: ${JWT_SIGNINGKEY:-dev-super-secret-change}
+      JWT__EXPIRESMINUTES: 60
     depends_on:
       perf-db:
         condition: service_healthy
@@ -96,6 +104,10 @@ services:
       ASPNETCORE_ENVIRONMENT: Production
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
       ConnectionStrings__Default: Host=comp-db;Database=comp;Username=postgres;Password=postgres
+      JWT__ISSUER: cohr.suite
+      JWT__AUDIENCE: cohr.suite.clients
+      JWT__SIGNINGKEY: ${JWT_SIGNINGKEY:-dev-super-secret-change}
+      JWT__EXPIRESMINUTES: 60
     depends_on:
       comp-db:
         condition: service_healthy
@@ -109,6 +121,10 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Production
       OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
+      JWT__ISSUER: cohr.suite
+      JWT__AUDIENCE: cohr.suite.clients
+      JWT__SIGNINGKEY: ${JWT_SIGNINGKEY:-dev-super-secret-change}
+      JWT__EXPIRESMINUTES: 60
     ports:
       - "8080:8080"
     depends_on:

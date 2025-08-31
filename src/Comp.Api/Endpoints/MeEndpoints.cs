@@ -8,16 +8,17 @@ public static class MeEndpoints
 {
     public static IEndpointRouteBuilder MapMe(this IEndpointRouteBuilder app)
     {
-        // GET /me  (tenant zorunlu, filter çalışır)
-        app.MapGet("/me", async (CompDbContext db, ITenantContext t) =>
+        app.MapGet("/me", (ITenantContext tctx) =>
         {
-            var last3 = await db.Salaries
-                .OrderByDescending(x => x.Period)
-                .Take(3)
-                .Select(x => new { x.Employee, x.Amount, x.Period })
-                .ToListAsync();
+            // Demo response
+            return Results.Ok(new { service = "perf", tenantId = tctx.Id });
+        });
 
-            return Results.Ok(new { tenant = t.Id, last3 });
+        // Örn: slug’lı demo endpoint sadece test için
+        app.MapGet("/{slug}/me", (string slug, ITenantContext tctx, HttpContext ctx) =>
+        {
+            // (Gateway slug’tan tenant’ı çözüp header’a koyuyor)
+            return Results.Ok(new { service = "perf", slug, tenantId = tctx.Id, host = ctx.Request.Headers["X-Host"].ToString() });
         });
 
         return app;

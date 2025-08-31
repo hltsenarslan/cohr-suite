@@ -8,7 +8,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace Core.Api.Infrastructure.Migrations
 {
     /// <inheritdoc />
-    public partial class Init : Migration
+    public partial class InitialCreate : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -31,6 +31,18 @@ namespace Core.Api.Infrastructure.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "Roles",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uuid", nullable: false),
+                    Name = table.Column<string>(type: "text", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_Roles", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "Tenants",
                 columns: table => new
                 {
@@ -43,6 +55,21 @@ namespace Core.Api.Infrastructure.Migrations
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_Tenants", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "Users",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uuid", nullable: false),
+                    Email = table.Column<string>(type: "text", nullable: false),
+                    PasswordHash = table.Column<string>(type: "text", nullable: false),
+                    IsActive = table.Column<bool>(type: "boolean", nullable: false, defaultValue: true),
+                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false, defaultValueSql: "CURRENT_TIMESTAMP")
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_Users", x => x.Id);
                 });
 
             migrationBuilder.CreateTable(
@@ -65,6 +92,37 @@ namespace Core.Api.Infrastructure.Migrations
                         onDelete: ReferentialAction.Cascade);
                 });
 
+            migrationBuilder.CreateTable(
+                name: "UserTenants",
+                columns: table => new
+                {
+                    UserId = table.Column<Guid>(type: "uuid", nullable: false),
+                    TenantId = table.Column<Guid>(type: "uuid", nullable: false),
+                    RoleId = table.Column<Guid>(type: "uuid", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_UserTenants", x => new { x.UserId, x.TenantId });
+                    table.ForeignKey(
+                        name: "FK_UserTenants_Roles_RoleId",
+                        column: x => x.RoleId,
+                        principalTable: "Roles",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                    table.ForeignKey(
+                        name: "FK_UserTenants_Tenants_TenantId",
+                        column: x => x.TenantId,
+                        principalTable: "Tenants",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                    table.ForeignKey(
+                        name: "FK_UserTenants_Users_UserId",
+                        column: x => x.UserId,
+                        principalTable: "Users",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
             migrationBuilder.InsertData(
                 table: "DomainMappings",
                 columns: new[] { "Id", "Host", "IsActive", "Module", "PathMode", "TenantId", "TenantSlug" },
@@ -72,6 +130,15 @@ namespace Core.Api.Infrastructure.Migrations
                 {
                     { new Guid("11111111-1111-1111-1111-111111111111"), "pys.local", true, "performance", "slug", null, null },
                     { new Guid("22222222-2222-2222-2222-222222222222"), "pay.local", true, "compensation", "slug", null, null }
+                });
+
+            migrationBuilder.InsertData(
+                table: "Roles",
+                columns: new[] { "Id", "Name" },
+                values: new object[,]
+                {
+                    { new Guid("0f000000-0000-0000-0000-0000000000a1"), "admin" },
+                    { new Guid("0f000000-0000-0000-0000-0000000000a2"), "viewer" }
                 });
 
             migrationBuilder.InsertData(
@@ -84,6 +151,15 @@ namespace Core.Api.Infrastructure.Migrations
                 });
 
             migrationBuilder.InsertData(
+                table: "Users",
+                columns: new[] { "Id", "Email", "IsActive", "PasswordHash" },
+                values: new object[,]
+                {
+                    { new Guid("0e000000-0000-0000-0000-0000000000b1"), "admin@firm1.local", true, "$2a$10$k4V0Ui0s5jJQk9S0iJYt9uYq2WmFQ7Y0yQ9bA4hQv8q1f9o8o0s3C" },
+                    { new Guid("0e000000-0000-0000-0000-0000000000b2"), "viewer@firm2.local", true, "$2a$10$k4V0Ui0s5jJQk9S0iJYt9uYq2WmFQ7Y0yQ9bA4hQv8q1f9o8o0s3C" }
+                });
+
+            migrationBuilder.InsertData(
                 table: "TenantDomains",
                 columns: new[] { "Id", "Host", "IsDefault", "TenantId" },
                 values: new object[,]
@@ -92,10 +168,25 @@ namespace Core.Api.Infrastructure.Migrations
                     { new Guid("33333333-3333-3333-3333-333333333332"), "pay.local", true, new Guid("44709835-d55a-ef2a-2327-5fdca19e55d8") }
                 });
 
+            migrationBuilder.InsertData(
+                table: "UserTenants",
+                columns: new[] { "TenantId", "UserId", "RoleId" },
+                values: new object[,]
+                {
+                    { new Guid("a0cb8251-16bc-6bde-cc66-5d76b0c7b0ac"), new Guid("0e000000-0000-0000-0000-0000000000b1"), new Guid("0f000000-0000-0000-0000-0000000000a1") },
+                    { new Guid("44709835-d55a-ef2a-2327-5fdca19e55d8"), new Guid("0e000000-0000-0000-0000-0000000000b2"), new Guid("0f000000-0000-0000-0000-0000000000a2") }
+                });
+
             migrationBuilder.CreateIndex(
                 name: "IX_DomainMappings_Host",
                 table: "DomainMappings",
                 column: "Host",
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Roles_Name",
+                table: "Roles",
+                column: "Name",
                 unique: true);
 
             migrationBuilder.CreateIndex(
@@ -114,6 +205,22 @@ namespace Core.Api.Infrastructure.Migrations
                 table: "Tenants",
                 column: "Slug",
                 unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Users_Email",
+                table: "Users",
+                column: "Email",
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_UserTenants_RoleId",
+                table: "UserTenants",
+                column: "RoleId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_UserTenants_TenantId",
+                table: "UserTenants",
+                column: "TenantId");
         }
 
         /// <inheritdoc />
@@ -126,7 +233,16 @@ namespace Core.Api.Infrastructure.Migrations
                 name: "TenantDomains");
 
             migrationBuilder.DropTable(
+                name: "UserTenants");
+
+            migrationBuilder.DropTable(
+                name: "Roles");
+
+            migrationBuilder.DropTable(
                 name: "Tenants");
+
+            migrationBuilder.DropTable(
+                name: "Users");
         }
     }
 }
