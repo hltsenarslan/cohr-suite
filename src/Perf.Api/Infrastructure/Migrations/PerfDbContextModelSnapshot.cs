@@ -8,7 +8,7 @@ using Perf.Api.Infrastructure;
 
 #nullable disable
 
-namespace Perf.Api.Migrations
+namespace Perf.Api.Infrastructure.Migrations
 {
     [DbContext(typeof(PerfDbContext))]
     partial class PerfDbContextModelSnapshot : ModelSnapshot
@@ -22,18 +22,14 @@ namespace Perf.Api.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
-            modelBuilder.Entity("Perf.Api.Domain.Goal", b =>
+            modelBuilder.Entity("Perf.Api.Infrastructure.Objective", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("TenantId")
-                        .IsRequired()
-                        .HasColumnType("text");
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
 
                     b.Property<string>("Title")
                         .IsRequired()
@@ -41,9 +37,7 @@ namespace Perf.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("TenantId", "CreatedAt");
-
-                    b.ToTable("Goals");
+                    b.ToTable("Objectives");
                 });
 #pragma warning restore 612, 618
         }

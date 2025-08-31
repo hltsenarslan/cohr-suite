@@ -1,10 +1,11 @@
 using Microsoft.AspNetCore.Http;
 
-namespace Common.Tenancy;
+namespace Comp.Api.Tenancy;
 
 public sealed class TenantContextMiddleware
 {
     private readonly RequestDelegate _next;
+    private const string TenantHeader = "X-Tenant-Id";
 
     public TenantContextMiddleware(RequestDelegate next) => _next = next;
 
@@ -12,7 +13,7 @@ public sealed class TenantContextMiddleware
     {
         var path = ctx.Request.Path.Value ?? "/";
 
-        // Health/ready/metrics BYPASS
+        // Sağlık/metrik uçlarını BYPASS
         if (path.StartsWith("/health", StringComparison.OrdinalIgnoreCase) ||
             path.StartsWith("/ready",  StringComparison.OrdinalIgnoreCase) ||
             path.StartsWith("/metrics",StringComparison.OrdinalIgnoreCase))
@@ -21,16 +22,16 @@ public sealed class TenantContextMiddleware
             return;
         }
 
-        // X-Tenant-Id zorunlu
-        var tenantId = ctx.Request.Headers["X-Tenant-Id"].FirstOrDefault();
-        if (string.IsNullOrWhiteSpace(tenantId))
+        // Header zorunlu
+        if (!ctx.Request.Headers.TryGetValue(TenantHeader, out var v) ||
+            !Guid.TryParse(v.ToString(), out var tid))
         {
             ctx.Response.StatusCode = StatusCodes.Status400BadRequest;
             await ctx.Response.WriteAsJsonAsync(new { error = "tenant_required" });
             return;
         }
 
-        tenantCtx.Set(tenantId);
+        tenantCtx.Set(tid);
         await _next(ctx);
     }
 }

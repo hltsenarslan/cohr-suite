@@ -1,7 +1,7 @@
-using Common.Tenancy;
 using Microsoft.EntityFrameworkCore;
 using Perf.Api.Infrastructure;
 using Perf.Api.Endpoints;
+using Perf.Api.Tenancy;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddScoped<ITenantContext, TenantContext>();
@@ -16,11 +16,9 @@ if (!builder.Environment.IsEnvironment("Testing"))
 }
 
 
-builder.Services.AddTenancy();
 builder.Services.AddEndpointsApiExplorer();
 
 var app = builder.Build();
-app.UseMiddleware<TenantContextMiddleware>();
 
 if (!app.Environment.IsEnvironment("Testing"))
 {
@@ -30,9 +28,20 @@ if (!app.Environment.IsEnvironment("Testing"))
 }
 
 app.MapPerfHealthEndpoints();
-app.UseTenantContext();
+app.UseMiddleware<TenantContextMiddleware>();
 app.MapPerfMeEndpoints();
+
+
+// Örnek: tenant-filtered liste
+app.MapGet("/objectives", async (PerfDbContext db) =>
+{
+    var list = await db.Objectives.OrderBy(x => x.Title).ToListAsync();
+    return Results.Ok(list);
+});
+
 
 app.Run();
 
-public partial class Program { }
+public partial class Program
+{
+}

@@ -1,4 +1,6 @@
+using System;
 using System.Data.Common;
+using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -35,6 +37,28 @@ public sealed class PerfWebAppFactory : WebApplicationFactory<Program>, IAsyncLi
             // ---- PERF SEED ---- (TenantId zorunlu alanları DOLDUR!)
             // Ör: db.Goals.Add(new Goal { TenantId = "...", ... });
             // db.SaveChanges();
+            
+            if (!db.Objectives.Any())
+            {
+                db.Objectives.AddRange(
+                    new Objective
+                    {
+                        Id = Guid.NewGuid(), TenantId = Guid.Parse("a0cb8251-16bc-6bde-cc66-5d76b0c7b0ac"),
+                        Title = "Firm1 Obj A"
+                    },
+                    new Objective
+                    {
+                        Id = Guid.NewGuid(), TenantId = Guid.Parse("a0cb8251-16bc-6bde-cc66-5d76b0c7b0ac"),
+                        Title = "Firm1 Obj B"
+                    },
+                    new Objective
+                    {
+                        Id = Guid.NewGuid(), TenantId = Guid.Parse("44709835-d55a-ef2a-2327-5fdca19e55d8"),
+                        Title = "Firm2 Obj X"
+                    }
+                );
+                db.SaveChanges();
+            }
         });
     }
 

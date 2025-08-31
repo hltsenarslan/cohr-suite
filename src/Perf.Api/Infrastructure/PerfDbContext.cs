@@ -1,26 +1,22 @@
-using Common.Tenancy;
 using Microsoft.EntityFrameworkCore;
-using Perf.Api.Domain;
-using Perf.Api.Infrastructure;
+using Perf.Api.Tenancy;
 
 namespace Perf.Api.Infrastructure;
 
 public class PerfDbContext : DbContext
 {
-    private readonly ITenantContext _tctx;
-    public PerfDbContext(DbContextOptions<PerfDbContext> opt, ITenantContext tctx) : base(opt) => _tctx = tctx;
+    private readonly ITenantContext _tenant;
+    public PerfDbContext(DbContextOptions<PerfDbContext> opts, ITenantContext tenant) : base(opts)
+    {
+        _tenant = tenant;
+    }
 
-
-    public DbSet<Goal> Goals => Set<Goal>();
+    public DbSet<Objective> Objectives => Set<Objective>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
-        b.Entity<Goal>().HasKey(x => x.Id);
-        b.Entity<Goal>().HasIndex(x => new { x.TenantId, x.CreatedAt });
-
-        // GLOBAL QUERY FILTER
-        b.Entity<Goal>().HasQueryFilter(x => x.TenantId == _tctx.TenantId);
-
+        // Global filtre
+        b.Entity<Objective>().HasQueryFilter(o => !_tenant.HasValue || o.TenantId == _tenant.Id);
         base.OnModelCreating(b);
     }
 }

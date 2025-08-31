@@ -1,17 +1,24 @@
-using Common.Tenancy;
 using Comp.Api.Infrastructure;
+using Comp.Api.Tenancy;
+using Microsoft.EntityFrameworkCore;
 
 namespace Comp.Api.Endpoints;
 
 public static class MeEndpoints
 {
-    public static IEndpointRouteBuilder MapCompMeEndpoints(this IEndpointRouteBuilder app)
+    public static IEndpointRouteBuilder MapMe(this IEndpointRouteBuilder app)
     {
-        app.MapGet("/me", (ITenantContext tctx) =>
-            Results.Ok(new { service = "comp", tenantId = tctx.TenantId }));
+        // GET /me  (tenant zorunlu, filter çalışır)
+        app.MapGet("/me", async (CompDbContext db, ITenantContext t) =>
+        {
+            var last3 = await db.Salaries
+                .OrderByDescending(x => x.Period)
+                .Take(3)
+                .Select(x => new { x.Employee, x.Amount, x.Period })
+                .ToListAsync();
 
-        app.MapGet("/{slug}/me", (string slug, ITenantContext tctx, HttpContext ctx) =>
-            Results.Ok(new { service = "comp", slug, tenantId = tctx.TenantId, host = ctx.Request.Headers["X-Host"].ToString() }));
+            return Results.Ok(new { tenant = t.Id, last3 });
+        });
 
         return app;
     }

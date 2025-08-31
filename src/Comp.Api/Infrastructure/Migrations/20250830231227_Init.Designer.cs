@@ -9,10 +9,10 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
 #nullable disable
 
-namespace Comp.Api.Migrations
+namespace Comp.Api.Infrastructure.Migrations
 {
     [DbContext(typeof(CompDbContext))]
-    [Migration("20250826193025_Init")]
+    [Migration("20250830231227_Init")]
     partial class Init
     {
         /// <inheritdoc />
@@ -25,29 +25,29 @@ namespace Comp.Api.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
-            modelBuilder.Entity("Comp.Api.Domain.Salary", b =>
+            modelBuilder.Entity("Salary", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
                     b.Property<decimal>("Amount")
-                        .HasColumnType("numeric");
-
-                    b.Property<DateTime>("EffectiveDate")
-                        .HasColumnType("timestamp with time zone");
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
 
                     b.Property<string>("Employee")
                         .IsRequired()
                         .HasColumnType("text");
 
-                    b.Property<string>("TenantId")
-                        .IsRequired()
-                        .HasColumnType("text");
+                    b.Property<DateOnly>("Period")
+                        .HasColumnType("date");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("TenantId", "EffectiveDate");
+                    b.HasIndex("TenantId", "Employee");
 
                     b.ToTable("Salaries");
                 });

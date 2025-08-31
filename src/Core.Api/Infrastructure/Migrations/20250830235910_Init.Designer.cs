@@ -9,11 +9,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
 #nullable disable
 
-namespace Core.Api.Migrations
+namespace Core.Api.Infrastructure.Migrations
 {
     [DbContext(typeof(CoreDbContext))]
-    [Migration("20250825204357_M3_Tenants_and_Domains")]
-    partial class M3_Tenants_and_Domains
+    [Migration("20250830235910_Init")]
+    partial class Init
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -85,7 +85,9 @@ namespace Core.Api.Migrations
                         .HasColumnType("uuid");
 
                     b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("NOW() AT TIME ZONE 'utc'");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -112,7 +114,7 @@ namespace Core.Api.Migrations
                         new
                         {
                             Id = new Guid("a0cb8251-16bc-6bde-cc66-5d76b0c7b0ac"),
-                            CreatedAt = new DateTime(2025, 8, 25, 20, 43, 57, 58, DateTimeKind.Utc).AddTicks(9480),
+                            CreatedAt = new DateTime(2025, 8, 25, 0, 0, 0, 0, DateTimeKind.Utc),
                             Name = "Firm 1",
                             Slug = "firm1",
                             Status = "active"
@@ -120,7 +122,7 @@ namespace Core.Api.Migrations
                         new
                         {
                             Id = new Guid("44709835-d55a-ef2a-2327-5fdca19e55d8"),
-                            CreatedAt = new DateTime(2025, 8, 25, 20, 43, 57, 58, DateTimeKind.Utc).AddTicks(9620),
+                            CreatedAt = new DateTime(2025, 8, 25, 0, 0, 0, 0, DateTimeKind.Utc),
                             Name = "Firm 2",
                             Slug = "firm2",
                             Status = "active"
