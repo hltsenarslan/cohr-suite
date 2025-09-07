@@ -1,5 +1,5 @@
 using System.Linq;
-using Core.Api.Infrastructure;             // CoreDbContext
+using Core.Api.Infrastructure;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
@@ -20,13 +20,11 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
     {
         builder.ConfigureServices(services =>
         {
-            // Var olan DbContextOptions<CoreDbContext> kaydını kaldır
             var descriptor = services.SingleOrDefault(
                 d => d.ServiceType == typeof(DbContextOptions<CoreDbContext>));
             if (descriptor is not null)
                 services.Remove(descriptor);
 
-            // Testcontainers Postgres connection string'i ile yeniden ekle
             services.AddDbContext<CoreDbContext>(opt => opt.UseNpgsql(_testConnectionString));
             
             

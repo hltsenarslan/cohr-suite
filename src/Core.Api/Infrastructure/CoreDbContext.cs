@@ -16,7 +16,8 @@ public class CoreDbContext : DbContext
     public DbSet<DomainMapping> DomainMappings => Set<DomainMapping>();
     public DbSet<Tenant> Tenants => Set<Tenant>();
     public DbSet<TenantDomain> TenantDomains => Set<TenantDomain>();
-
+    public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
+    public DbSet<RevokedAccessToken> RevokedAccessTokens => Set<RevokedAccessToken>();
     protected override void OnModelCreating(ModelBuilder b)
     {
         base.OnModelCreating(b);
@@ -28,21 +29,32 @@ public class CoreDbContext : DbContext
         b.Entity<Tenant>().HasIndex(x => x.Slug).IsUnique();
         b.Entity<Tenant>().Property(x => x.Name).HasMaxLength(200);
         b.Entity<Tenant>().Property(x => x.Slug).HasMaxLength(100);
-        // DB default (deterministik model)
 
         if (!Database.IsNpgsql())
         {
-            // SQLite UTC zaten 'now' UTC döner
             b.Entity<Tenant>().Property(x => x.CreatedAt)
-                .HasDefaultValueSql("CURRENT_TIMESTAMP"); // veya: "STRFTIME('%Y-%m-%d %H:%M:%f','now')"
+                .HasDefaultValueSql("CURRENT_TIMESTAMP");
         }
         else
         {
-            // Postgres
             b.Entity<Tenant>().Property(x => x.CreatedAt)
                 .HasDefaultValueSql("NOW() AT TIME ZONE 'utc'");
         }
+        
+        b.Entity<RevokedAccessToken>(e =>
+        {
+            e.ToTable("RevokedAccessTokens");
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => x.Jti).IsUnique();
+        });
 
+        b.Entity<RefreshToken>(e =>
+        {
+            e.ToTable("RefreshTokens");
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => new { x.UserId, x.TokenHash }).IsUnique();
+            e.Property(x => x.TokenHash).IsRequired().HasMaxLength(64);
+        });
 
         b.Entity<TenantDomain>().HasIndex(x => x.Host).IsUnique();
         b.Entity<TenantDomain>()
@@ -78,11 +90,9 @@ public class CoreDbContext : DbContext
             e.HasOne(x => x.Tenant).WithMany().HasForeignKey(x => x.TenantId);
         });
 
-        //SEED ------------------------------------------------------------------
-
         var firm1 = Guid.Parse("a0cb8251-16bc-6bde-cc66-5d76b0c7b0ac");
         var firm2 = Guid.Parse("44709835-d55a-ef2a-2327-5fdca19e55d8");
-        var seedTime = new DateTime(2025, 8, 25, 0, 0, 0, DateTimeKind.Utc); // SABİT
+        var seedTime = new DateTime(2025, 8, 25, 0, 0, 0, DateTimeKind.Utc);
 
         b.Entity<Tenant>().HasData(
             new Tenant { Id = firm1, Name = "Firm 1", Slug = "firm1", Status = "active", CreatedAt = seedTime },
@@ -102,7 +112,6 @@ public class CoreDbContext : DbContext
             }
         );
 
-        // Seed (M1 demo)
         b.Entity<DomainMapping>().HasData(
             new DomainMapping
             {
@@ -126,31 +135,25 @@ public class CoreDbContext : DbContext
             }
         );
 
-        // --- MS5: Auth seedleri -------------------------------------------------
-// --- RBAC seed (MS5) ---
         var roleAdminId  = Guid.Parse("0F000000-0000-0000-0000-0000000000A1");
         var roleViewerId = Guid.Parse("0F000000-0000-0000-0000-0000000000A2");
 
         var userAdminId  = Guid.Parse("0E000000-0000-0000-0000-0000000000B1");
         var userViewerId = Guid.Parse("0E000000-0000-0000-0000-0000000000B2");
 
-// NOT: Bu hash "Pass123$" içindir; Users tablosunda gördüğünle AYNI kalsın.
         const string passHash = "$2a$10$k4V0Ui0s5jJQk9S0iJYt9uYq2WmFQ7Y0yQ9bA4hQv8q1f9o8o0s3C";
 
-// Roles
         b.Entity<Role>().HasData(
             new Role { Id = roleAdminId,  Name = "admin"  },
             new Role { Id = roleViewerId, Name = "viewer" }
         );
 
-// Users
         b.Entity<User>().HasData(
             new User {
                 Id = userAdminId,
                 Email = "admin@firm1.local",
                 PasswordHash = passHash,
                 IsActive = true
-                // CreatedAt: DB default (CURRENT_TIMESTAMP)
             },
             new User {
                 Id = userViewerId,
@@ -160,11 +163,9 @@ public class CoreDbContext : DbContext
             }
         );
 
-// UserTenants (ilişki)
         b.Entity<UserTenant>().HasData(
             new UserTenant { UserId = userAdminId,  TenantId = firm1, RoleId = roleAdminId  },
             new UserTenant { UserId = userViewerId, TenantId = firm2, RoleId = roleViewerId }
         );
-// ------------------------------------------------------------------------
     }
 }

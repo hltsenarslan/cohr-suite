@@ -34,10 +34,6 @@ public sealed class PerfWebAppFactory : WebApplicationFactory<Program>, IAsyncLi
             var db = scope.ServiceProvider.GetRequiredService<PerfDbContext>();
             db.Database.EnsureCreated();
 
-            // ---- PERF SEED ---- (TenantId zorunlu alanları DOLDUR!)
-            // Ör: db.Goals.Add(new Goal { TenantId = "...", ... });
-            // db.SaveChanges();
-            
             if (!db.Objectives.Any())
             {
                 db.Objectives.AddRange(

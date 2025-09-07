@@ -19,14 +19,13 @@ public static class InternalDomainEndpoints
             if (map is null)
                 return Results.NotFound(new { error = "domain_not_found", host = h });
 
-            // enum → int projeksiyonu (gateway ile birebir)
             var dto = new
             {
                 id         = map.Id,
                 host       = map.Host,
-                module     = (int)map.Module,                // enum → int
-                tenantId   = map.TenantId,                   // Guid? → string serileşir
-                pathMode   = map.PathMode == PathMode.slug ? 1 : 0, // slug=1, host=0
+                module     = (int)map.Module,
+                tenantId   = map.TenantId,
+                pathMode   = map.PathMode == PathMode.slug ? 1 : 0,
                 tenantSlug = map.TenantSlug,
                 isActive   = map.IsActive
             };

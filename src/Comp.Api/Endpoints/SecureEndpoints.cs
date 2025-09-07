@@ -15,12 +15,11 @@ public static class SecureEndpoints
                 var roles = u.Claims.Where(c => c.Type == ClaimTypes.Role).Select(c => c.Value).ToArray();
                 return Results.Ok(new { ok = true, sub, roles });
             })
-            .RequireAuthorization(); // token zorunlu
+            .RequireAuthorization();
 
         app.MapGet("/secure/admin-only", () => Results.Ok(new { ok = true }))
             .RequireAuthorization(policy => policy.RequireRole("admin"));
 
-            // .RequireAuthorization("RequireAdmin"); // sadece admin
         return app;
     }
 }

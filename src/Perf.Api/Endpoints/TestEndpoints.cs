@@ -14,6 +14,13 @@ public static class TestEndpoints
             var list = await db.Objectives.OrderBy(x => x.Title).ToListAsync();
             return Results.Ok(list);
         });
+        
+        app.MapGet("/debug/headers", (HttpContext c) =>
+        {
+            var dict = c.Request.Headers.ToDictionary(k => k.Key, v => v.Value.ToString());
+            return Results.Json(dict);
+        });
         return app;
+        
     }
 }

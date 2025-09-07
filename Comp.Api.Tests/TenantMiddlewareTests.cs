@@ -35,7 +35,6 @@ public class TenantMiddlewareTests : IClassFixture<CompWebAppFactory>
     {
         var c = _f.CreateClient();
 
-        // firm1
         var r1 = new HttpRequestMessage(HttpMethod.Get, "/me");
         r1.Headers.Add("X-Tenant-Id", "a0cb8251-16bc-6bde-cc66-5d76b0c7b0ac");
         var res1 = await c.SendAsync(r1);
@@ -43,7 +42,6 @@ public class TenantMiddlewareTests : IClassFixture<CompWebAppFactory>
         Assert.Equal(HttpStatusCode.OK, res1.StatusCode);
         Assert.Contains("\"tenant\":\"a0cb8251-16bc-6bde-cc66-5d76b0c7b0ac\"", b1);
 
-        // firm2 – farklı veri
         var r2 = new HttpRequestMessage(HttpMethod.Get, "/me");
         r2.Headers.Add("X-Tenant-Id", "44709835-d55a-ef2a-2327-5fdca19e55d8");
         var res2 = await c.SendAsync(r2);
@@ -51,6 +49,6 @@ public class TenantMiddlewareTests : IClassFixture<CompWebAppFactory>
         Assert.Equal(HttpStatusCode.OK, res2.StatusCode);
         Assert.Contains("\"tenant\":\"44709835-d55a-ef2a-2327-5fdca19e55d8\"", b2);
 
-        Assert.NotEqual(b1, b2); // izolasyon kanıtı (seed verilere göre farklı listeler)
+        Assert.NotEqual(b1, b2);
     }
 }

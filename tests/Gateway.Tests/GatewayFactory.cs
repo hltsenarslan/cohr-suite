@@ -8,7 +8,6 @@ public sealed class GatewayFactory : WebApplicationFactory<Program>
     {
         builder.ConfigureServices(services =>
         {
-            // Core’a giden HttpClient’ı fake handler ile değiştir
             services.AddHttpClient("core").ConfigurePrimaryHttpMessageHandler(() => new FakeCoreHandler());
         });
 

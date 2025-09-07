@@ -6,12 +6,12 @@ using Core.Api.Endpoints;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using Microsoft.OpenApi.Models;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 
 var builder = WebApplication.CreateBuilder(args);
 
-/* --- Services --- */
 if (!builder.Environment.IsEnvironment("Testing"))
 {
     builder.Services.AddDbContext<CoreDbContext>(o =>
@@ -32,7 +32,6 @@ builder.Services.AddOpenTelemetry()
     });
 
 
-// Auth (genel)
 var jwt = builder.Configuration.GetSection("Jwt");
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(o =>
@@ -41,7 +40,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         {
             ValidIssuer = jwt["Issuer"],
             ValidAudience = jwt["Audience"],
-            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwt["SigningKey"]!)),
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwt["Secret"]!)),
             ValidateIssuer = true,
             ValidateAudience = true,
             ValidateIssuerSigningKey = true,
@@ -49,27 +48,43 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             NameClaimType = JwtRegisteredClaimNames.Sub,
             RoleClaimType = ClaimTypes.Role
         };
+
+        o.Events = new JwtBearerEvents
+        {
+            OnTokenValidated = async ctx =>
+            {
+                var db = ctx.HttpContext.RequestServices.GetRequiredService<CoreDbContext>();
+                var jti = ctx.Principal?.FindFirst("jti")?.Value;
+
+                if (!string.IsNullOrEmpty(jti))
+                {
+                    var revoked = await db.RevokedAccessTokens.AnyAsync(x => x.Jti == jti);
+                    if (revoked)
+                    {
+                        ctx.Fail("Access token revoked");
+                    }
+                }
+            }
+        };
     });
 builder.Services.AddAuthorization();
-
+builder.Services.AddHttpContextAccessor();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(o =>
 {
-    // JWT için “Authorize” butonu
     o.SwaggerDoc("v1", new() { Title = builder.Environment.ApplicationName, Version = "v1" });
-    o.AddSecurityDefinition("Bearer", new()
+    o.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
     {
+        In = ParameterLocation.Header,
+        Description = "Enter: Bearer {token}",
         Name = "Authorization",
-        Type = Microsoft.OpenApi.Models.SecuritySchemeType.Http,
-        Scheme = "bearer",
-        BearerFormat = "JWT",
-        In = Microsoft.OpenApi.Models.ParameterLocation.Header,
-        Description = "Bearer {token}"
+        Type = SecuritySchemeType.ApiKey
     });
-    o.AddSecurityRequirement(new()
+    o.AddSecurityRequirement(new OpenApiSecurityRequirement
     {
         {
-            new() { Reference = new() { Type = Microsoft.OpenApi.Models.ReferenceType.SecurityScheme, Id = "Bearer" } },
+            new OpenApiSecurityScheme
+                { Reference = new OpenApiReference { Type = ReferenceType.SecurityScheme, Id = "Bearer" } },
             Array.Empty<string>()
         }
     });
@@ -84,12 +99,11 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI(c =>
     {
         c.SwaggerEndpoint("/swagger/v1/swagger.json", $"{app.Environment.ApplicationName} v1");
-        c.RoutePrefix = "swagger"; // /swagger
+        c.RoutePrefix = "swagger";
     });
 }
 
 
-/* --- Auto-migrate --- */
 if (!app.Environment.IsEnvironment("Testing"))
 {
     using var scope = app.Services.CreateScope();
@@ -97,13 +111,12 @@ if (!app.Environment.IsEnvironment("Testing"))
     db.Database.Migrate();
 }
 
-/* --- Map endpoints --- */
-app.MapHealthEndpoints(); // /health, /ready
+app.MapHealthEndpoints();
 app.MapAuth(app.Configuration, app.Environment);
-app.MapInternalDomainEndpoints(); // /internal/domains/{host}
-app.MapInternalTenantEndpoints(); // /internal/tenants/...
-app.MapAdminTenantEndpoints(); // /internal/admin/tenants
-app.MapAdminDomainEndpoints(); // /internal/admin/domains
+app.MapInternalDomainEndpoints();
+app.MapInternalTenantEndpoints();
+app.MapAdminTenantEndpoints();
+app.MapAdminDomainEndpoints();
 
 var urls = builder.Configuration["ASPNETCORE_URLS"];
 app.Run(urls);

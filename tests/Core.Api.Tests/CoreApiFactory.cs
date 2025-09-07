@@ -4,10 +4,10 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
-using Core.Api.Infrastructure; // CoreDbContext
+using Core.Api.Infrastructure;
 using Core.Api.Domain;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using Xunit; // Tenant, DomainMapping, enums
+using Xunit;
 
 public class CoreWebAppFactory : WebApplicationFactory<Program>,IAsyncLifetime
 {
@@ -21,28 +21,22 @@ public class CoreWebAppFactory : WebApplicationFactory<Program>,IAsyncLifetime
         {
             services.RemoveAll<DbContextOptions<CoreDbContext>>();
             services.RemoveAll<CoreDbContext>();
-            
 
-            // Tek bir açık in-memory SQLite connection (test sınıfı boyunca)
+
             _conn = new SqliteConnection("DataSource=:memory:");
             _conn.Open();
 
             services.AddDbContext<CoreDbContext>(opts =>
             {
                 opts.UseSqlite(_conn);
-                // Postgres’e özgü uyarıları testte kapatmak istersen:
-                // opts.ConfigureWarnings(w => w.Ignore(RelationalEventId.PendingModelChangesWarning));
             });
 
-            // Provider değişikliği sonrası yeni provider ile bir scope yaratıp DB’yi kur+seed et
             using var sp = services.BuildServiceProvider();
             using var scope = sp.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<CoreDbContext>();
 
-            // Migrate yerine EnsureCreated (SQLite’ta hızlı ve temiz)
             db.Database.EnsureCreated();
 
-            // --- Test seed ---
             if (!db.Tenants.Any())
             {
                 var firm1 = new Tenant
@@ -72,7 +66,7 @@ public class CoreWebAppFactory : WebApplicationFactory<Program>,IAsyncLifetime
                         Id = Guid.Parse("11111111-1111-1111-1111-111111111111"),
                         Host = "pys.local",
                         Module = ModuleKind.performance,
-                        TenantId = null,         // slug mode: null
+                        TenantId = null,
                         PathMode = PathMode.slug,
                         TenantSlug = null,
                         IsActive = true
@@ -82,7 +76,7 @@ public class CoreWebAppFactory : WebApplicationFactory<Program>,IAsyncLifetime
                         Id = Guid.Parse("22222222-2222-2222-2222-222222222222"),
                         Host = "pay.local",
                         Module = ModuleKind.compensation,
-                        TenantId = Guid.Parse("44709835-d55a-ef2a-2327-5fdca19e55d8"), // host mode: hard map
+                        TenantId = Guid.Parse("44709835-d55a-ef2a-2327-5fdca19e55d8"),
                         PathMode = PathMode.host,
                         TenantSlug = null,
                         IsActive = true

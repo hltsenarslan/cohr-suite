@@ -5,7 +5,6 @@ public static class CoreTestSeed
 {
     public static void Run(CoreDbContext db)
     {
-        // temiz başla
         db.DomainMappings.RemoveRange(db.DomainMappings);
         db.TenantDomains.RemoveRange(db.TenantDomains);
         db.Tenants.RemoveRange(db.Tenants);

@@ -13,7 +13,6 @@ public sealed class TenantContextMiddleware
     {
         var path = ctx.Request.Path.Value ?? "/";
 
-        // Sağlık/metrik uçlarını BYPASS
         if (path.StartsWith("/health", StringComparison.OrdinalIgnoreCase) ||
             path.StartsWith("/ready",  StringComparison.OrdinalIgnoreCase) ||
             path.StartsWith("/metrics",StringComparison.OrdinalIgnoreCase))
@@ -22,7 +21,6 @@ public sealed class TenantContextMiddleware
             return;
         }
 
-        // Header zorunlu
         if (!ctx.Request.Headers.TryGetValue(TenantHeader, out var v) ||
             !Guid.TryParse(v.ToString(), out var tid))
         {

@@ -10,7 +10,6 @@ public sealed class TenantContextMiddleware
     public async Task Invoke(HttpContext ctx, ITenantContext tenant)
     {
         var path = ctx.Request.Path.Value ?? "/";
-        // health/ready/metrics bypass
         if (path.StartsWith("/health", StringComparison.OrdinalIgnoreCase) ||
             path.StartsWith("/ready",  StringComparison.OrdinalIgnoreCase) ||
             path.StartsWith("/metrics",StringComparison.OrdinalIgnoreCase))

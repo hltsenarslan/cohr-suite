@@ -23,7 +23,6 @@ public class CompDbContext : DbContext
             e.HasIndex(x => new { x.TenantId, x.Employee });
         });
 
-        // Tenant izolasyonu (global filter)
         b.Entity<Salary>().HasQueryFilter(x => x.TenantId == _tenant.Id);
     }
 }

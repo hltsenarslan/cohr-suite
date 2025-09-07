@@ -9,16 +9,13 @@ public static class MeEndpoints
     {
         app.MapGet("/me", (ITenantContext tctx) =>
         {
-            // Demo response
             return Results.Ok(new { service = "perf", tenantId = tctx.Id });
         });
 
-        // Örn: slug’lı demo endpoint sadece test için
         app.MapGet("/{slug}/me", (string slug, ITenantContext tctx, HttpContext ctx) =>
         {
-            // (Gateway slug’tan tenant’ı çözüp header’a koyuyor)
             return Results.Ok(new { service = "perf", slug, tenantId = tctx.Id, host = ctx.Request.Headers["X-Host"].ToString() });
-        }).RequireAuthorization(policy => policy.RequireRole("admin"));
+        }).RequireAuthorization("RequireAdmin");
 
         return app;
     }

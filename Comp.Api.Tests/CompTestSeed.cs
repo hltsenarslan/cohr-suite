@@ -1,5 +1,3 @@
-// Comp.Api.Tests/CompTestSeed.cs
-
 using Comp.Api.Infrastructure;
 
 public static class CompTestSeed

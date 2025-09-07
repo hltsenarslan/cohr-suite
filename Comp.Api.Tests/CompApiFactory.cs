@@ -21,13 +21,11 @@ public class CompWebAppFactory : WebApplicationFactory<Program>, IAsyncLifetime
             services.RemoveAll<DbContextOptions<CompDbContext>>();
             services.RemoveAll<CompDbContext>();
 
-            // tek açık in-memory connection (sınıf lifetime’ı)
             _conn = new SqliteConnection("DataSource=:memory:");
             _conn.Open();
 
             services.AddDbContext<CompDbContext>(o => o.UseSqlite(_conn));
-            
-            // provider değişti → DB kur + seed
+
             using var sp = services.BuildServiceProvider();
             using var scope = sp.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<CompDbContext>();

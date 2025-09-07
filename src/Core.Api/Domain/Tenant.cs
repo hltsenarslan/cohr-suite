@@ -6,7 +6,7 @@ public class Tenant
     public string Name { get; set; } = default!;
     public string Slug { get; set; } = default!;
     public string Status { get; set; } = "active";
-    public DateTime CreatedAt { get; set; } // <-- initializer YOK
+    public DateTime CreatedAt { get; set; }
     public ICollection<TenantDomain> Domains { get; set; } = new List<TenantDomain>();
 }
 

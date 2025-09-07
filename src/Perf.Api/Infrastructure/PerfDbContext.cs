@@ -15,7 +15,6 @@ public class PerfDbContext : DbContext
 
     protected override void OnModelCreating(ModelBuilder b)
     {
-        // Global filtre
         b.Entity<Objective>().HasQueryFilter(o => !_tenant.HasValue || o.TenantId == _tenant.Id);
         base.OnModelCreating(b);
     }

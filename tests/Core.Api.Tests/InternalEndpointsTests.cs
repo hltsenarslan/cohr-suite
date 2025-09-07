@@ -20,7 +20,7 @@ public class InternalEndpointsTests : IClassFixture<CoreWebAppFactory>
         res.EnsureSuccessStatusCode();
 
         var json = await res.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal(1, json.GetProperty("pathMode").GetInt32()); // slug=1
+        Assert.Equal(1, json.GetProperty("pathMode").GetInt32());
     }
 
     [Fact]

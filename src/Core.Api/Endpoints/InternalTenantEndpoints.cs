@@ -9,7 +9,6 @@ public static class InternalTenantEndpoints
     {
         var grp = app.MapGroup("/internal/tenants");
 
-        // /internal/tenants/resolve/{slug}  → 200 { tenantId }  |  400 { error, slug }
         grp.MapGet("/resolve/{slug}", async (string slug, CoreDbContext db) =>
         {
             var s = slug.Trim().ToLowerInvariant();
@@ -25,14 +24,13 @@ public static class InternalTenantEndpoints
             return Results.Ok(new { tenantId = id });
         });
 
-        // /internal/tenants/by-host/{host}  → 200 { tenantId }  |  400 { error, host }
         grp.MapGet("/by-host/{host}", async (string host, CoreDbContext db) =>
         {
             var h = host.Trim().ToLowerInvariant();
 
             var id = await db.TenantDomains.AsNoTracking()
                 .Where(d => d.Host == h)
-                .OrderByDescending(d => d.IsDefault) // varsa default’u tercih et
+                .OrderByDescending(d => d.IsDefault)
                 .Select(d => d.TenantId)
                 .FirstOrDefaultAsync();
 
