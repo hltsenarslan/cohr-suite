@@ -1,8 +1,10 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
+using System.Text.Json.Serialization;
 using Core.Api.Infrastructure;
 using Core.Api.Endpoints;
+using Core.Api.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -12,11 +14,21 @@ using OpenTelemetry.Trace;
 
 var builder = WebApplication.CreateBuilder(args);
 
+
+builder.Services.ConfigureHttpJsonOptions(o =>
+{
+    o.SerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
+    o.SerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
+});
+
 if (!builder.Environment.IsEnvironment("Testing"))
 {
     builder.Services.AddDbContext<CoreDbContext>(o =>
         o.UseNpgsql(builder.Configuration.GetConnectionString("Default")));
 }
+
+builder.Services.AddScoped<IFeatureGate, FeatureGate>();
+builder.Services.AddSingleton<ILicenseCache, LicenseCache>();
 
 builder.Services.AddOpenTelemetry()
     .WithTracing(t =>
@@ -49,6 +61,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             RoleClaimType = ClaimTypes.Role
         };
 
+
         o.Events = new JwtBearerEvents
         {
             OnTokenValidated = async ctx =>
@@ -64,6 +77,30 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
                         ctx.Fail("Access token revoked");
                     }
                 }
+            },
+            OnMessageReceived = ctx =>
+            {
+                var auth = ctx.Request.Headers["Authorization"].ToString();
+                if (!string.IsNullOrWhiteSpace(auth))
+                {
+                    auth = auth.Trim().Trim('"').Trim('\'');
+                    if (auth.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+                        ctx.Token = auth.Substring("Bearer ".Length).Trim();
+                }
+
+                return Task.CompletedTask;
+            },
+
+            OnAuthenticationFailed = ctx =>
+            {
+                Console.WriteLine($"[JWT][AuthFailed] {ctx.Exception.GetType().Name}: {ctx.Exception.Message}");
+                return Task.CompletedTask;
+            },
+
+            OnChallenge = ctx =>
+            {
+                Console.WriteLine($"[JWT][Challenge] Error={ctx.Error} Desc={ctx.ErrorDescription}");
+                return Task.CompletedTask;
             }
         };
     });
@@ -89,9 +126,10 @@ builder.Services.AddSwaggerGen(o =>
         }
     });
 });
-
+builder.Services.AddAuthorization(o => o.AddPolicy("RequireAdmin", p => p.RequireRole("admin")));
 
 var app = builder.Build();
+
 
 if (app.Environment.IsDevelopment())
 {
@@ -111,12 +149,21 @@ if (!app.Environment.IsEnvironment("Testing"))
     db.Database.Migrate();
 }
 
+using (var scope = app.Services.CreateScope())
+{
+    var lic = scope.ServiceProvider.GetRequiredService<ILicenseCache>();
+    await lic.ReloadAsync();
+}
+
+app.MapInternalFeatureEndpoints();
 app.MapHealthEndpoints();
 app.MapAuth(app.Configuration, app.Environment);
 app.MapInternalDomainEndpoints();
 app.MapInternalTenantEndpoints();
 app.MapAdminTenantEndpoints();
 app.MapAdminDomainEndpoints();
+app.MapAdminSubscriptionEndpoints();
+app.MapAdmin();
 
 var urls = builder.Configuration["ASPNETCORE_URLS"];
 app.Run(urls);

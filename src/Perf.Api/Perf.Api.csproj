@@ -20,9 +20,6 @@
     <PackageReference Include="OpenTelemetry.Instrumentation.Http" Version="1.12.0" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="9.0.4" />
   </ItemGroup>
-
-  <ItemGroup>
-    <ProjectReference Include="..\Core.Api\Core.Api.csproj" />
-  </ItemGroup>
+  
 
 </Project>

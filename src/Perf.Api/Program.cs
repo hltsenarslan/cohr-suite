@@ -5,14 +5,16 @@ using Perf.Api.Endpoints;
 using Perf.Api.Tenancy;
 using System.Security.Claims;
 using System.Text;
-using Core.Api.Infrastructure;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
+using Perf.Api.CoreClient;
+using Perf.Api.Enforcement;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddScoped<ITenantContext, TenantContext>();
 if (!builder.Environment.IsEnvironment("Testing"))
 {
+
     builder.Services.AddDbContext<PerfDbContext>(opt =>
     {
         var cs = builder.Configuration.GetConnectionString("Default")
@@ -20,10 +22,12 @@ if (!builder.Environment.IsEnvironment("Testing"))
         opt.UseNpgsql(cs);
     });
 
-    var coreBase = builder.Configuration["Core:BaseUrl"] ?? "http://core-api:5011";
-    builder.Services.AddHttpClient("core", c =>
+    builder.Services.AddHttpClient<ICoreFeatureClient, CoreFeatureClient>(client =>
     {
-        c.BaseAddress = new Uri(coreBase);
+        var coreUrl = builder.Configuration["Core:BaseUrl"];
+        if (string.IsNullOrEmpty(coreUrl))
+            throw new InvalidOperationException("Missing Core:BaseUrl in config");
+        client.BaseAddress = new Uri(coreUrl.TrimEnd('/'));
     });
 }
 
@@ -135,6 +139,7 @@ var app = builder.Build();
 
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseMiddleware<PerfFeatureMiddleware>();
 
 app.Use(async (ctx, next) =>
 {
@@ -178,6 +183,7 @@ if (!app.Environment.IsEnvironment("Testing"))
 
 app.MapPerfHealthEndpoints();
 app.UseMiddleware<TenantContextMiddleware>();
+app.UseMiddleware<PerfFeatureMiddleware>();
 app.MapPerfMeEndpoints();
 app.MapTestEndpoints();
 

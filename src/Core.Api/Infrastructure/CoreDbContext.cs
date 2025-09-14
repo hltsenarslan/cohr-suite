@@ -18,6 +18,12 @@ public class CoreDbContext : DbContext
     public DbSet<TenantDomain> TenantDomains => Set<TenantDomain>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
     public DbSet<RevokedAccessToken> RevokedAccessTokens => Set<RevokedAccessToken>();
+    public DbSet<Plan> Plans => Set<Plan>();
+    public DbSet<PlanFeature> PlanFeatures => Set<PlanFeature>();
+    public DbSet<TenantSubscription> TenantSubscriptions => Set<TenantSubscription>();
+    public DbSet<UsageCounter> UsageCounters => Set<UsageCounter>();
+    public DbSet<LicenseStatus> LicenseStatuses => Set<LicenseStatus>();
+
     protected override void OnModelCreating(ModelBuilder b)
     {
         base.OnModelCreating(b);
@@ -40,7 +46,7 @@ public class CoreDbContext : DbContext
             b.Entity<Tenant>().Property(x => x.CreatedAt)
                 .HasDefaultValueSql("NOW() AT TIME ZONE 'utc'");
         }
-        
+
         b.Entity<RevokedAccessToken>(e =>
         {
             e.ToTable("RevokedAccessTokens");
@@ -90,6 +96,48 @@ public class CoreDbContext : DbContext
             e.HasOne(x => x.Tenant).WithMany().HasForeignKey(x => x.TenantId);
         });
 
+        b.Entity<Plan>(e =>
+        {
+            e.ToTable("Plans");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Name).IsRequired().HasMaxLength(120);
+        });
+
+        b.Entity<PlanFeature>(e =>
+        {
+            e.ToTable("PlanFeatures");
+            e.HasKey(x => x.Id);
+            e.HasOne(x => x.Plan).WithMany(p => p.Features).HasForeignKey(x => x.PlanId);
+        });
+
+        b.Entity<TenantSubscription>(e =>
+        {
+            e.ToTable("TenantSubscriptions");
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => new { x.TenantId, x.Status });
+        });
+
+        b.Entity<TenantSubscription>(e =>
+        {
+            e.HasOne(s => s.Plan)
+                .WithMany(p => p.Subscriptions)
+                .HasForeignKey(s => s.PlanId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+        
+        b.Entity<UsageCounter>(e =>
+        {
+            e.ToTable("UsageCounters");
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => new { x.TenantId, x.FeatureKey, x.PeriodKey }).IsUnique();
+        });
+
+        b.Entity<LicenseStatus>(e =>
+        {
+            e.ToTable("LicenseStatuses");
+            e.HasKey(x => x.Id);
+        });
+
         var firm1 = Guid.Parse("a0cb8251-16bc-6bde-cc66-5d76b0c7b0ac");
         var firm2 = Guid.Parse("44709835-d55a-ef2a-2327-5fdca19e55d8");
         var seedTime = new DateTime(2025, 8, 25, 0, 0, 0, DateTimeKind.Utc);
@@ -135,27 +183,29 @@ public class CoreDbContext : DbContext
             }
         );
 
-        var roleAdminId  = Guid.Parse("0F000000-0000-0000-0000-0000000000A1");
+        var roleAdminId = Guid.Parse("0F000000-0000-0000-0000-0000000000A1");
         var roleViewerId = Guid.Parse("0F000000-0000-0000-0000-0000000000A2");
 
-        var userAdminId  = Guid.Parse("0E000000-0000-0000-0000-0000000000B1");
+        var userAdminId = Guid.Parse("0E000000-0000-0000-0000-0000000000B1");
         var userViewerId = Guid.Parse("0E000000-0000-0000-0000-0000000000B2");
 
         const string passHash = "$2a$10$k4V0Ui0s5jJQk9S0iJYt9uYq2WmFQ7Y0yQ9bA4hQv8q1f9o8o0s3C";
 
         b.Entity<Role>().HasData(
-            new Role { Id = roleAdminId,  Name = "admin"  },
+            new Role { Id = roleAdminId, Name = "admin" },
             new Role { Id = roleViewerId, Name = "viewer" }
         );
 
         b.Entity<User>().HasData(
-            new User {
+            new User
+            {
                 Id = userAdminId,
                 Email = "admin@firm1.local",
                 PasswordHash = passHash,
                 IsActive = true
             },
-            new User {
+            new User
+            {
                 Id = userViewerId,
                 Email = "viewer@firm2.local",
                 PasswordHash = passHash,
@@ -164,7 +214,7 @@ public class CoreDbContext : DbContext
         );
 
         b.Entity<UserTenant>().HasData(
-            new UserTenant { UserId = userAdminId,  TenantId = firm1, RoleId = roleAdminId  },
+            new UserTenant { UserId = userAdminId, TenantId = firm1, RoleId = roleAdminId },
             new UserTenant { UserId = userViewerId, TenantId = firm2, RoleId = roleViewerId }
         );
     }

@@ -1,0 +1,10 @@
+{
+  "alg": "AES-GCM-256",
+  "sigAlg": "HMAC-SHA256",
+  "kdf": "PBKDF2",
+  "salt": "gdhEecN5cRpZCAxAQbaDAA==",
+  "iv": "i5n80J0lOKXtcMlo",
+  "ciphertext": "YY4vYr9a101a3kBAriBVKA2MyyPJsD7L/dOCNshGqTKid2K\u002BMFBQnhjiQ9f1JU3P04cmSzc5oLD0Qn0CQIEfl27AILUIJ3B30g4zydU7pa1BIks2DIutwT3eOuh9kECSKi\u002B9Ak8dCEvJuFDwjtrAbPBpQ8ZbuDkBk7hA2wbKqpOG4iUNa/BeiI72sHv5Fn2tBmiBJ\u002B7XOqhT3qbc84zbWR1jVVuQe8UamcOPytSlJ9Jk67o=",
+  "tag": "1B71YaVu9D9QmPtItxIS1w==",
+  "signature": "osJy\u002BfAdWiLfU2M5AjfRqjScf9SjJGK6RXZ5Dy8T4vw="
+}

@@ -7,6 +7,9 @@ using ITenantContext = Comp.Api.Tenancy.ITenantContext;
 using TenantContext = Comp.Api.Tenancy.TenantContext;
 using System.Security.Claims;
 using System.Text;
+using Comp.Api;
+using Comp.Api.CoreClient;
+using Comp.Api.Enforcement;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 
@@ -21,11 +24,13 @@ if (!builder.Environment.IsEnvironment("Testing"))
                  ?? "Host=comp-db;Database=comp;Username=postgres;Password=postgres";
         opt.UseNpgsql(cs);
     });
-
-    var coreBase = builder.Configuration["Core:BaseUrl"] ?? "http://core-api:5011";
-    builder.Services.AddHttpClient("core", c =>
+    
+    builder.Services.AddHttpClient<ICoreFeatureClient, CoreFeatureClient>(client =>
     {
-        c.BaseAddress = new Uri(coreBase);
+        var coreUrl = builder.Configuration["Core:BaseUrl"];
+        if (string.IsNullOrEmpty(coreUrl))
+            throw new InvalidOperationException("Missing Core:BaseUrl in config");
+        client.BaseAddress = new Uri(coreUrl.TrimEnd('/'));
     });
 }
 
@@ -130,7 +135,7 @@ builder.Services.AddAuthorization(options => { options.AddPolicy("RequireAdmin",
 
 
 var app = builder.Build();
-
+app.UseMiddleware<CompFeatureMiddleware>();
 app.Use(async (ctx, next) =>
 {
     var p = ctx.Request.Path.Value?.ToLowerInvariant() ?? "/";

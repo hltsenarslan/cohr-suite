@@ -15,7 +15,7 @@ public static class MeEndpoints
 
         app.MapGet("/{slug}/me", (string slug, ITenantContext tctx, HttpContext ctx) =>
         {
-            return Results.Ok(new { service = "perf", slug, tenantId = tctx.Id, host = ctx.Request.Headers["X-Host"].ToString() });
+            return Results.Ok(new { service = "comp", slug, tenantId = tctx.Id, host = ctx.Request.Headers["X-Host"].ToString() });
         });
 
         return app;

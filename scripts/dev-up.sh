@@ -109,13 +109,6 @@ ensure_migration_and_update() {
   fi
 }
 
-# ---- .NET restore/build/test ----
-say "dotnet restore/build/test"
-dotnet --info >/dev/null
-dotnet restore
-dotnet build -c Release
-dotnet test -c Release --no-build
-
 # ---- Optional: Clean previous docker compose stack ----
 if [[ "$CLEAN_COMPOSE" == "1" ]]; then
   say "cleaning previous docker compose stack (down -v --remove-orphans)"
