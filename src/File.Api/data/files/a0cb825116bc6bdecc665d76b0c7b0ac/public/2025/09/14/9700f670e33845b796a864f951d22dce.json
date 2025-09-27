@@ -1,0 +1,429 @@
+{
+  "info": {
+    "name": "CoHR MS6 — Subscription & Feature Flags",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_postman_id": "b3d2a9fc-0c6b-4dbe-9e7c-7b9f2e1f7777"
+  },
+  "item": [
+    {
+      "name": "0) Setup & Auth",
+      "item": [
+        {
+          "name": "Login (Admin) → sets {{accessToken}}",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/core/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","core","auth","login"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"{{adminPassword}}\",\n  \"tenant\": \"{{tenant1Slug}}\"\n}"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.code === 200);",
+                  "const json = pm.response.json();",
+                  "pm.expect(json).to.have.property('accessToken');",
+                  "pm.collectionVariables.set('accessToken', json.accessToken);",
+                  "pm.collectionVariables.set('refreshToken', json.refreshToken || '');"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login (Viewer@firm2) → sets {{viewerToken}}",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/core/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","core","auth","login"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{viewerEmail}}\",\n  \"password\": \"{{viewerPassword}}\",\n  \"tenant\": \"{{tenant2Slug}}\"\n}"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.code === 200);",
+                  "const json = pm.response.json();",
+                  "pm.collectionVariables.set('viewerToken', json.accessToken);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ],
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "exec": [
+              "// Koleksiyon level pre-request: accessToken yoksa admin login at",
+              "if (!pm.collectionVariables.get('accessToken')) {",
+              "  pm.sendRequest({",
+              "    url: pm.variables.replaceIn('[[baseUrl]]/api/core/auth/login').replace('[[','{{').replace(']]','}}'),",
+              "    method: 'POST',",
+              "    header: {'Content-Type':'application/json'},",
+              "    body: {",
+              "      mode: 'raw',",
+              "      raw: JSON.stringify({",
+              "        email: pm.collectionVariables.get('adminEmail'),",
+              "        password: pm.collectionVariables.get('adminPassword'),",
+              "        tenant: pm.collectionVariables.get('tenant1Slug')",
+              "      })",
+              "    }",
+              "  }, (err, res) => {",
+              "    if(!err && res.code===200){",
+              "      const j = res.json();",
+              "      pm.collectionVariables.set('accessToken', j.accessToken);",
+              "      pm.collectionVariables.set('refreshToken', j.refreshToken||'');",
+              "    }",
+              "  });",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "1) License (Core Admin)",
+      "item": [
+        {
+          "name": "GET License Status",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "url": { "raw": "{{baseUrl}}/api/core/admin/license/status", "host": ["{{baseUrl}}"], "path": ["api","core","admin","license","status"] }
+          },
+          "event": [
+            { "listen":"test","script":{"type":"text/javascript","exec":[
+              "pm.test(\"200\",()=>pm.response.code===200);",
+              "const j=pm.response.json(); pm.expect(j).to.have.property('mode');"
+            ]}}
+          ]
+        },
+        {
+          "name": "POST License Reload",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "url": { "raw": "{{baseUrl}}/api/core/admin/license/reload", "host": ["{{baseUrl}}"], "path": ["api","core","admin","license","reload"] }
+          },
+          "event": [
+            { "listen":"test","script":{"type":"text/javascript","exec":[
+              "pm.test(\"200\",()=>pm.response.code===200);"
+            ]}}
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2) Plans (Core Admin)",
+      "item": [
+        {
+          "name": "POST Create Plan: PerfOnly (limit perf=100, comp=0)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": { "raw": "{{baseUrl}}/api/core/admin/plans", "host": ["{{baseUrl}}"], "path": ["api","core","admin","plans"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"PerfOnly\",\n  \"features\": [\n    { \"key\": \"perf\", \"userLimit\": 100 },\n    { \"key\": \"comp\", \"userLimit\": 0 }\n  ]\n}"
+            }
+          },
+          "event": [
+            { "listen":"test","script":{"type":"text/javascript","exec":[
+              "pm.test(\"201\",()=>pm.response.code===201 || pm.response.code===200);",
+              "const j=pm.response.json(); pm.collectionVariables.set('planPerfOnlyId', j.id || j.planId || '');"
+            ]}}
+          ]
+        },
+        {
+          "name": "POST Create Plan: Perf+Comp (perf=100, comp=100)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": { "raw": "{{baseUrl}}/api/core/admin/plans", "host": ["{{baseUrl}}"], "path": ["api","core","admin","plans"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"PerfComp\",\n  \"features\": [\n    { \"key\": \"perf\", \"userLimit\": 100 },\n    { \"key\": \"comp\", \"userLimit\": 100 }\n  ]\n}"
+            }
+          },
+          "event": [
+            { "listen":"test","script":{"type":"text/javascript","exec":[
+              "pm.test(\"201/200\",()=>[200,201].includes(pm.response.code));",
+              "const j=pm.response.json(); pm.collectionVariables.set('planPerfCompId', j.id || j.planId || '');"
+            ]}}
+          ]
+        },
+        {
+          "name": "GET Plans (List)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "url": { "raw": "{{baseUrl}}/api/core/admin/plans", "host": ["{{baseUrl}}"], "path": ["api","core","admin","plans"] }
+          },
+          "event": [
+            { "listen":"test","script":{"type":"text/javascript","exec":[
+              "pm.test(\"200\",()=>pm.response.code===200);",
+              "pm.expect(Array.isArray(pm.response.json())).to.be.true;"
+            ]}}
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3) Subscriptions (Core Admin)",
+      "item": [
+        {
+          "name": "Assign Firm1 → PerfOnly (now..+1y)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": { "raw": "{{baseUrl}}/api/core/admin/subscriptions/assign", "host": ["{{baseUrl}}"], "path": ["api","core","admin","subscriptions","assign"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tenantId\": \"{{tenant1Id}}\",\n  \"planId\": \"{{planPerfOnlyId}}\",\n  \"startsAt\": \"{{nowIso}}\",\n  \"endsAt\": \"{{oneYearLaterIso}}\",\n  \"status\": \"active\"\n}"
+            }
+          },
+          "event": [
+            { "listen":"test","script":{"type":"text/javascript","exec":[
+              "pm.test(\"200/204\",()=>[200,204].includes(pm.response.code));"
+            ]}}
+          ]
+        },
+        {
+          "name": "Assign Firm2 → PerfComp (now..+1y)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": { "raw": "{{baseUrl}}/api/core/admin/subscriptions/assign", "host": ["{{baseUrl}}"], "path": ["api","core","admin","subscriptions","assign"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tenantId\": \"{{tenant2Id}}\",\n  \"planId\": \"{{planPerfCompId}}\",\n  \"startsAt\": \"{{nowIso}}\",\n  \"endsAt\": \"{{oneYearLaterIso}}\",\n  \"status\": \"active\"\n}"
+            }
+          },
+          "event": [
+            { "listen":"test","script":{"type":"text/javascript","exec":[
+              "pm.test(\"200/204\",()=>[200,204].includes(pm.response.code));"
+            ]}}
+          ]
+        }
+      ]
+    },
+    {
+      "name": "4) Internal Feature Check (Core)",
+      "item": [
+        {
+          "name": "Firm1 → comp should be disabled",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/core/internal/features/check?tenantId={{tenant1Id}}&featureKey=comp",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","core","internal","features","check"],
+              "query": [
+                { "key": "tenantId", "value": "{{tenant1Id}}" },
+                { "key": "featureKey", "value": "comp" }
+              ]
+            }
+          },
+          "event": [
+            { "listen":"test","script":{"type":"text/javascript","exec":[
+              "pm.test(\"200\",()=>pm.response.code===200);",
+              "const j=pm.response.json(); pm.expect(j.enabled).to.eql(false);"
+            ]}}
+          ]
+        },
+        {
+          "name": "Firm2 → comp should be enabled",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/core/internal/features/check?tenantId={{tenant2Id}}&featureKey=comp",
+              "host": ["{{baseUrl}}"],
+              "path": ["api","core","internal","features","check"],
+              "query": [
+                { "key": "tenantId", "value": "{{tenant2Id}}" },
+                { "key": "featureKey", "value": "comp" }
+              ]
+            }
+          },
+          "event": [
+            { "listen":"test","script":{"type":"text/javascript","exec":[
+              "pm.test(\"200\",()=>pm.response.code===200);",
+              "const j=pm.response.json(); pm.expect(j.enabled).to.eql(true);"
+            ]}}
+          ]
+        }
+      ]
+    },
+    {
+      "name": "5) Enforcement (Perf/Comp via Gateway)",
+      "item": [
+        {
+          "name": "Firm1 → /comp/me should be 403 feature_not_enabled",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Host", "value": "{{hostComp}}" },
+              { "key": "X-Tenant-Id", "value": "{{tenant1Id}}" }
+            ],
+            "url": { "raw": "{{baseUrl}}/api/comp/{{tenant1Slug}}/me", "host": ["{{baseUrl}}"], "path": ["api","comp","{{tenant1Slug}}","me"] }
+          },
+          "event": [
+            { "listen":"test","script":{"type":"text/javascript","exec":[
+              "pm.test(\"403\",()=>pm.response.code===403);",
+              "const j=pm.response.json(); pm.expect(j.error).to.eql('feature_not_enabled');"
+            ]}}
+          ]
+        },
+        {
+          "name": "Firm1 → /perf/me should be 200",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Host", "value": "{{hostPerf}}" },
+              { "key": "X-Tenant-Id", "value": "{{tenant1Id}}" }
+            ],
+            "url": { "raw": "{{baseUrl}}/api/perf/{{tenant1Slug}}/me", "host": ["{{baseUrl}}"], "path": ["api","perf","{{tenant1Slug}}","me"] }
+          },
+          "event": [
+            { "listen":"test","script":{"type":"text/javascript","exec":[
+              "pm.test(\"200\",()=>pm.response.code===200);"
+            ]}}
+          ]
+        },
+        {
+          "name": "Firm2 (viewer token) → /comp/me should be 200",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{viewerToken}}" },
+              { "key": "Host", "value": "{{hostComp}}" },
+              { "key": "X-Tenant-Id", "value": "{{tenant2Id}}" }
+            ],
+            "url": { "raw": "{{baseUrl}}/api/comp/{{tenant2Slug}}/me", "host": ["{{baseUrl}}"], "path": ["api","comp","{{tenant2Slug}}","me"] }
+          },
+          "event": [
+            { "listen":"test","script":{"type":"text/javascript","exec":[
+              "pm.test(\"200\",()=>pm.response.code===200);"
+            ]}}
+          ]
+        }
+      ]
+    },
+    {
+      "name": "6) Quota Negative (force 402)",
+      "item": [
+        {
+          "name": "PATCH Plan PerfOnly → perf.userLimit = 0 (force exceed)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": { "raw": "{{baseUrl}}/api/core/admin/plans/{{planPerfOnlyId}}", "host": ["{{baseUrl}}"], "path": ["api","core","admin","plans","{{planPerfOnlyId}}"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"features\": [ { \"key\": \"perf\", \"userLimit\": 0 }, { \"key\": \"comp\", \"userLimit\": 0 } ]\n}"
+            }
+          },
+          "event": [
+            { "listen":"test","script":{"type":"text/javascript","exec":[
+              "pm.test(\"200/204\",()=>[200,204].includes(pm.response.code));"
+            ]}}
+          ]
+        },
+        {
+          "name": "Firm1 → /perf/me should be 402 quota_exceeded",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Host", "value": "{{hostPerf}}" },
+              { "key": "X-Tenant-Id", "value": "{{tenant1Id}}" }
+            ],
+            "url": { "raw": "{{baseUrl}}/api/perf/{{tenant1Slug}}/me", "host": ["{{baseUrl}}"], "path": ["api","perf","{{tenant1Slug}}","me"] }
+          },
+          "event": [
+            { "listen":"test","script":{"type":"text/javascript","exec":[
+              "pm.test(\"402\",()=>pm.response.code===402);",
+              "const j=pm.response.json(); pm.expect(j.error).to.eql('quota_exceeded');"
+            ]}}
+          ]
+        }
+      ]
+    }
+  ],
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:5000" },
+    { "key": "hostPerf", "value": "pys.local" },
+    { "key": "hostComp", "value": "pay.local" },
+    { "key": "tenant1Slug", "value": "firm1" },
+    { "key": "tenant2Slug", "value": "firm2" },
+    { "key": "tenant1Id", "value": "a0cb8251-16bc-6bde-cc66-5d76b0c7b0ac" },
+    { "key": "tenant2Id", "value": "44709835-d55a-ef2a-2327-5fdca19e55d8" },
+    { "key": "adminEmail", "value": "admin@firm1.local" },
+    { "key": "adminPassword", "value": "Pass123$" },
+    { "key": "viewerEmail", "value": "viewer@firm2.local" },
+    { "key": "viewerPassword", "value": "Pass123$" },
+    { "key": "nowIso", "value": "2025-09-01T00:00:00Z" },
+    { "key": "oneYearLaterIso", "value": "2026-09-01T00:00:00Z" },
+    { "key": "accessToken", "value": "" },
+    { "key": "viewerToken", "value": "" },
+    { "key": "planPerfOnlyId", "value": "" },
+    { "key": "planPerfCompId", "value": "" },
+    { "key": "refreshToken", "value": "" }
+  ]
+}

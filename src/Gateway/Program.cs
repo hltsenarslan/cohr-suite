@@ -65,7 +65,19 @@ builder.Services.AddReverseProxy().LoadFromMemory(
             ClusterId = "comp",
             Match = new RouteMatch { Path = "/api/comp/{**catch-all}" },
             Transforms = new[] { new Dictionary<string, string> { { "PathRemovePrefix", "/api/comp" } } }
-        }
+        },
+        new RouteConfig
+        {
+            RouteId = "files",
+            ClusterId = "files",
+            Match = new RouteMatch { Path = "/api/files/{**catch-all}" }
+        },
+        new RouteConfig
+        {
+            RouteId = "notify",
+            ClusterId = "notify",
+            Match = new RouteMatch { Path = "/api/notify/{**catch-all}" }
+        },
     },
     clusters: new[]
     {
@@ -86,7 +98,23 @@ builder.Services.AddReverseProxy().LoadFromMemory(
             ClusterId = "comp",
             Destinations = new Dictionary<string, DestinationConfig>
                 { ["d1"] = new DestinationConfig { Address = builder.Configuration["YarpConf:comp"] ?? "" } }
-        }
+        },
+        new ClusterConfig
+        {
+            ClusterId = "files",
+            Destinations = new Dictionary<string, DestinationConfig>
+            {
+                ["d1"] = new DestinationConfig { Address = builder.Configuration["YarpConf:files"] ?? "" }
+            }
+        },
+        new ClusterConfig
+        {
+            ClusterId = "notify",
+            Destinations = new Dictionary<string, DestinationConfig>
+            {
+                ["d1"] = new DestinationConfig { Address = builder.Configuration["YarpConf:notify"] ?? "" }
+            }
+        },
     }
 );
 
@@ -115,8 +143,10 @@ app.Use(async (HttpContext ctx, RequestDelegate next) =>
     bool isApi = segs.Length >= 1 && segs[0].Equals("api", StringComparison.OrdinalIgnoreCase);
     bool isPerf = isApi && segs.Length >= 2 && segs[1].Equals("perf", StringComparison.OrdinalIgnoreCase);
     bool isComp = isApi && segs.Length >= 2 && segs[1].Equals("comp", StringComparison.OrdinalIgnoreCase);
+    bool isFiles = isApi && segs.Length >= 2 && segs[1].Equals("files", StringComparison.OrdinalIgnoreCase);
+    bool isNotify = isApi && segs.Length >= 2 && segs[1].Equals("notify", StringComparison.OrdinalIgnoreCase);
 
-    if (!(isPerf || isComp))
+    if (!(isPerf || isComp || isFiles || isNotify))
     {
         await next(ctx);
         return;
@@ -181,7 +211,7 @@ app.Use(async (HttpContext ctx, RequestDelegate next) =>
         }
     }
 
-    if (string.IsNullOrEmpty(tenantId))
+    if (string.IsNullOrEmpty(tenantId) && !isFiles)
     {
         ctx.Response.StatusCode = StatusCodes.Status400BadRequest;
         await ctx.Response.WriteAsJsonAsync(new { error = "tenant_resolve_failed", host, pathMode = map?.PathMode });
