@@ -4,9 +4,12 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Primitives;
+using NSwag;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 using Yarp.ReverseProxy.Configuration;
+using Swashbuckle.AspNetCore.SwaggerUI;
+using OpenApiInfo = Microsoft.OpenApi.Models.OpenApiInfo;
 
 static async Task<T?> GetJsonOrNull<T>(HttpClient http, string url, JsonSerializerOptions opts, CancellationToken ct)
 {
@@ -38,6 +41,13 @@ builder.Services.AddOpenTelemetry()
                 o.Endpoint = new Uri(ep);
             });
     });
+
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen(c =>
+{
+    c.SwaggerDoc("gateway", new OpenApiInfo { Title = "Gateway Swagger", Version = "v1" });
+});
+builder.Services.AddHttpClient("swagger");
 
 builder.Services.AddMemoryCache();
 builder.Services.AddHttpClient("core", c => c.BaseAddress = new Uri(builder.Configuration["YarpConf:core"] ?? ""));
@@ -119,6 +129,137 @@ builder.Services.AddReverseProxy().LoadFromMemory(
 );
 
 var app = builder.Build();
+
+app.MapGet("/swagger/proxy/{service}", async (string service, IConfiguration cfg, IHttpClientFactory hcf) =>
+    {
+        var services = cfg.GetSection("Swagger:Services").Get<List<SwaggerSvc>>() ?? [];
+        var target = services.FirstOrDefault(s => s.name.Equals(service, StringComparison.OrdinalIgnoreCase))?.url;
+        if (string.IsNullOrWhiteSpace(target))
+            return Results.NotFound(new { error = "service_not_found", service });
+
+        var client = hcf.CreateClient("swagger");
+        using var resp = await client.GetAsync(target);
+        if (!resp.IsSuccessStatusCode)
+            return Results.StatusCode((int)resp.StatusCode);
+
+        var contentType = resp.Content.Headers.ContentType?.ToString() ?? "application/json";
+        var bytes = await resp.Content.ReadAsByteArrayAsync();
+        return Results.Bytes(bytes, contentType);
+    })
+    .WithName("SwaggerProxy");
+
+// 2) UI
+app.UseSwagger();
+app.UseSwaggerUI(c =>
+{
+    var services = app.Configuration.GetSection("Swagger:Services").Get<List<SwaggerSvc>>() ?? [];
+    foreach (var s in services)
+        c.SwaggerEndpoint($"/swagger/proxy/{s.name}", $"{s.name.ToUpper()} API");
+    
+    c.SwaggerEndpoint("/swagger/aggregate/v1/swagger.json", "Unified API");
+
+    // (İstersen) tekleştirilmiş birleşik JSON’u da ekleyebilirsin:
+    // c.SwaggerEndpoint("/swagger/aggregate/v1/swagger.json", "UNIFIED API");
+
+    c.DocExpansion(DocExpansion.List);
+    c.DisplayOperationId();
+    c.RoutePrefix = "swagger"; // http://localhost:5000/swagger
+});
+
+app.MapGet("/swagger/aggregate/v1/swagger.json", async (IConfiguration cfg, IHttpClientFactory hcf) =>
+    {
+        var services = cfg.GetSection("Swagger:Services").Get<List<SwaggerSvc>>() ?? [];
+        if (services.Count == 0)
+            return Results.Problem("No swagger services configured");
+
+        var client = hcf.CreateClient("swagger");
+
+        // Tüm dökümanları çek
+        var docs = new List<OpenApiDocument>();
+        foreach (var s in services)
+        {
+            using var resp = await client.GetAsync(s.url);
+            resp.EnsureSuccessStatusCode();
+            var json = await resp.Content.ReadAsStringAsync();
+            var doc = await OpenApiDocument.FromJsonAsync(json);
+
+            // Çakışmaları önlemek için operationId'lere prefix ekle (opsiyonel ama önerilir)
+            if (cfg.GetValue("Swagger:OperationIdPrefixByService", true))
+            {
+                foreach (var path in doc.Paths.Values)
+                {
+                    foreach (var op in path.Values)
+                    {
+                        if (!string.IsNullOrWhiteSpace(op.OperationId))
+                            op.OperationId = $"{s.name}_{op.OperationId}";
+                    }
+                }
+            }
+
+            // Server bilgisini Gateway'e işaret edecek şekilde normalize edebilirsin (opsiyonel)
+            // doc.Servers = new List<OpenApiServer> { new() { Url = "http://localhost:8080" } };
+
+            docs.Add(doc);
+        }
+
+        // Merge: NSwag, doğrudan “tek doc’a ekle” API’si sunmuyor ancak ana doc’u alıp diğerlerini içine aktarabiliriz.
+        var baseDoc = docs[0];
+
+        for (int i = 1; i < docs.Count; i++)
+        {
+            var d = docs[i];
+
+            // Paths
+            foreach (var (path, item) in d.Paths)
+            {
+                // Çakışmayı önlemek için aynı path varsa sonrakine suffix ekleyebilirsin (örn. /users → /notify_users)
+                if (baseDoc.Paths.ContainsKey(path))
+                {
+                    var newPath = $"/{services[i].name}{(path.StartsWith("/") ? "" : "/")}{path}".Replace("//", "/");
+                    baseDoc.Paths[newPath] = item;
+                }
+                else
+                {
+                    baseDoc.Paths[path] = item;
+                }
+            }
+
+            // Şemalar
+            foreach (var (name, schema) in d.Components.Schemas)
+            {
+                var newName = name;
+                if (baseDoc.Components.Schemas.ContainsKey(newName))
+                    newName = $"{services[i].name}_{name}";
+                baseDoc.Components.Schemas[newName] = schema;
+            }
+
+            // SecuritySchemes (varsa)
+            foreach (var (name, sec) in d.Components.SecuritySchemes)
+            {
+                var newName = name;
+                if (baseDoc.Components.SecuritySchemes.ContainsKey(newName))
+                    newName = $"{services[i].name}_{name}";
+                baseDoc.Components.SecuritySchemes[newName] = sec;
+            }
+
+            // Tags (UI için güzel olur)
+            foreach (var tag in d.Tags)
+            {
+                if (!baseDoc.Tags.Any(t => t.Name == tag.Name))
+                    baseDoc.Tags.Add(tag);
+            }
+        }
+
+        // Başlık
+        baseDoc.Info.Title = "Co-HR Suite Unified API";
+        baseDoc.Info.Version = "v1";
+
+        var mergedJson = baseDoc.ToJson(); // tekleştirilmiş JSON
+        return Results.Content(mergedJson, "application/json");
+    })
+    .WithName("UnifiedSwagger")
+    .WithTags("Swagger");
+
 
 app.Use(async (HttpContext ctx, RequestDelegate next) =>
 {
@@ -283,6 +424,8 @@ public enum PathModeDto
 record DomainMapDto(string Host, int Module, string? TenantId, int PathMode, string? TenantSlug, bool IsActive);
 
 record TenantResolveDto(string tenantId);
+
+record SwaggerSvc(string name, string title, string url);
 
 public partial class Program
 {

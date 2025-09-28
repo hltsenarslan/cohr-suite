@@ -24,7 +24,7 @@ if (!builder.Environment.IsEnvironment("Testing"))
                  ?? "Host=comp-db;Database=comp;Username=postgres;Password=postgres";
         opt.UseNpgsql(cs);
     });
-    
+
     builder.Services.AddHttpClient<ICoreFeatureClient, CoreFeatureClient>(client =>
     {
         var coreUrl = builder.Configuration["Core:BaseUrl"];
@@ -135,6 +135,16 @@ builder.Services.AddAuthorization(options => { options.AddPolicy("RequireAdmin",
 
 
 var app = builder.Build();
+if (app.Environment.IsDevelopment())
+{
+    app.UseSwagger();
+    app.UseSwaggerUI(c =>
+    {
+        c.SwaggerEndpoint("/swagger/v1/swagger.json", $"{app.Environment.ApplicationName} v1");
+        c.RoutePrefix = "swagger";
+    });
+}
+
 app.MapHealth();
 
 app.UseMiddleware<CompFeatureMiddleware>();
@@ -161,15 +171,6 @@ app.Use(async (ctx, next) =>
     await next();
 });
 
-if (app.Environment.IsDevelopment())
-{
-    app.UseSwagger();
-    app.UseSwaggerUI(c =>
-    {
-        c.SwaggerEndpoint("/swagger/v1/swagger.json", $"{app.Environment.ApplicationName} v1");
-        c.RoutePrefix = "swagger";
-    });
-}
 
 if (!app.Environment.IsEnvironment("Testing"))
 {
@@ -177,7 +178,6 @@ if (!app.Environment.IsEnvironment("Testing"))
     var db = scope.ServiceProvider.GetRequiredService<CompDbContext>();
     db.Database.Migrate();
 }
-
 
 
 app.UseMiddleware<TenantContextMiddleware>();

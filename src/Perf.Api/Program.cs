@@ -14,7 +14,6 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddScoped<ITenantContext, TenantContext>();
 if (!builder.Environment.IsEnvironment("Testing"))
 {
-
     builder.Services.AddDbContext<PerfDbContext>(opt =>
     {
         var cs = builder.Configuration.GetConnectionString("Default")
@@ -136,6 +135,15 @@ builder.Services.AddSwaggerGen(o =>
 });
 
 var app = builder.Build();
+if (app.Environment.IsDevelopment())
+{
+    app.UseSwagger();
+    app.UseSwaggerUI(c =>
+    {
+        c.SwaggerEndpoint("/swagger/v1/swagger.json", $"{app.Environment.ApplicationName} v1");
+        c.RoutePrefix = "swagger";
+    });
+}
 
 app.UseAuthentication();
 app.UseAuthorization();
@@ -164,15 +172,6 @@ app.Use(async (ctx, next) =>
     await next();
 });
 
-if (app.Environment.IsDevelopment())
-{
-    app.UseSwagger();
-    app.UseSwaggerUI(c =>
-    {
-        c.SwaggerEndpoint("/swagger/v1/swagger.json", $"{app.Environment.ApplicationName} v1");
-        c.RoutePrefix = "swagger";
-    });
-}
 
 if (!app.Environment.IsEnvironment("Testing"))
 {

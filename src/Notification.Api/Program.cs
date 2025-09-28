@@ -20,7 +20,7 @@ if (!builder.Environment.IsEnvironment("Testing"))
                  ?? "Host=notif-db;Database=notif;Username=postgres;Password=postgres";
         opt.UseNpgsql(cs);
     });
-    
+
     builder.Services.AddHttpClient("file", c => { c.Timeout = TimeSpan.FromSeconds(100); });
 }
 
@@ -29,13 +29,6 @@ if (!builder.Environment.IsEnvironment("Testing"))
 builder.Services.AddScoped<IMailer, Mailer>();
 builder.Services.AddHostedService<QueueWorker>();
 builder.Services.AddSingleton<QueueWorker>();
-
-builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen(o =>
-{
-    o.SwaggerDoc("v1", new OpenApiInfo { Title = "Notification.Api", Version = "v1" });
-});
-
 
 var jwt = builder.Configuration.GetSection("Jwt");
 builder.Services
@@ -142,6 +135,11 @@ builder.Services.AddSwaggerGen(o =>
 
 var app = builder.Build();
 
+if (app.Environment.IsDevelopment())
+{
+    app.UseSwagger();
+    app.UseSwaggerUI();
+}
 
 // migrate
 using (var scope = app.Services.CreateScope())
