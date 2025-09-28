@@ -1,8 +1,8 @@
 version: "3.9"
 
 services:
-  # ------------------ INFRA ------------------
-  postgres:
+  # ------------------ DB ------------------
+  core-db:
     image: postgres:16
     container_name: cohr-core-db
     environment:
@@ -15,10 +15,10 @@ services:
       timeout: 5s
       retries: 20
     ports:
-      - "5432:5432"   # local dev için
+      - "5432:5432"  
     volumes:
-      - pg:/var/lib/postgresql/data
-    profiles: [ "infra" ]
+      - pg-core:/var/lib/postgresql/data
+    profiles: [ "db" ]
     restart: unless-stopped
 
   perf-db:
@@ -37,9 +37,9 @@ services:
       - "5433:5432"   # local dev için
     volumes:
       - pg-perf:/var/lib/postgresql/data
-    profiles: [ "infra" ]
+    profiles: [ "db" ]
     restart: unless-stopped
-
+  
   comp-db:
     image: postgres:16
     container_name: cohr-comp-db
@@ -56,9 +56,45 @@ services:
       - "5434:5432"   # local dev için
     volumes:
       - pg-comp:/var/lib/postgresql/data
-    profiles: [ "infra" ]
+    profiles: [ "db" ]
+    restart: unless-stopped
+  
+  files-db:
+    image: postgres:16
+    container_name: cohr-files-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: files
+    healthcheck:
+      test: [ "CMD-SHELL","pg_isready -U postgres -d files" ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    volumes: [ "pg-files:/var/lib/postgresql/data" ]
+    ports: [ "5435:5432" ]
+    profiles: [ "db" ]
     restart: unless-stopped
 
+  notif-db:
+    image: postgres:16
+    container_name: cohr-notif-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: notif
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres -d notif" ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    ports:
+      - "5436:5432"   # local dev için
+    volumes:
+      - pg-notif:/var/lib/postgresql/data
+    profiles: [ "db" ]
+    restart: unless-stopped
+  
   # ------------------ APIS -------------------
   core-api:
     build:
@@ -73,9 +109,9 @@ services:
       JWT__SIGNINGKEY: ${JWT_SIGNINGKEY:-dev-super-secret-change}
       JWT__EXPIRESMINUTES: 60
     depends_on:
-      postgres:
+      core-db:
         condition: service_healthy
-    profiles: [ "core" ]
+    profiles: [ "api" ]
     restart: unless-stopped
 
   perf-api:
@@ -93,7 +129,7 @@ services:
     depends_on:
       perf-db:
         condition: service_healthy
-    profiles: [ "perf" ]
+    profiles: [ "api" ]
     restart: unless-stopped
 
   comp-api:
@@ -111,43 +147,29 @@ services:
     depends_on:
       comp-db:
         condition: service_healthy
-    profiles: [ "comp" ]
+    profiles: [ "api" ]
     restart: unless-stopped
-    
-  files-db:
-    image: postgres:16
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: files
-    healthcheck:
-      test: [ "CMD-SHELL","pg_isready -U postgres -d files" ]
-      interval: 5s
-      timeout: 5s
-      retries: 20
-    volumes: [ "pg-files:/var/lib/postgresql/data" ]
-    ports: [ "5435:5432" ]
-    profiles: [ "infra" ]
-    restart: unless-stopped
-
+  
   file-api:
     build:
       context: .
       dockerfile: src/File.Api/Dockerfile
     environment:
       ASPNETCORE_ENVIRONMENT: Production
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
       ConnectionStrings__Default: Host=files-db;Database=files;Username=postgres;Password=postgres
       Jwt__Issuer: cohr.suite
       Jwt__Audience: cohr.suite.clients
       Jwt__Secret: ${JWT_SECRET:-mO9G0w3m2v6yH9kJ7m4y5y6aJmX8rJ8a1H3nQ7fF2yQhO8d6YyS9HQ==}
       Files__Root: /data/files
       Files__MaxUploadMb: "50"
-      Files__SigningKey: ${FILES_SIGNING_KEY:-file-api-signing-key-please-change}
+      Files__SigningKey: ${JWT_SIGNINGKEY:-dev-super-secret-change}
     volumes:
       - files-data:/data/files
     depends_on:
-      files-db: { condition: service_healthy }
-    profiles: [ "files" ]
+      files-db:
+        condition: service_healthy
+    profiles: [ "api" ]
     restart: unless-stopped
 
   notify-api:
@@ -156,12 +178,14 @@ services:
       dockerfile: src/Notification.Api/Dockerfile
     environment:
       ASPNETCORE_ENVIRONMENT: Production
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
+      ConnectionStrings__Default: Host=files-db;Database=notif;Username=postgres;Password=postgres
       Jwt__Issuer: cohr.suite
       Jwt__Audience: cohr.suite.clients
       Jwt__Secret: ${JWT_SECRET:-mO9G0w3m2v6yH9kJ7m4y5y6aJmX8rJ8a1H3nQ7fF2yQhO8d6YyS9HQ==}
-    profiles: [ "notify" ]
+    profiles: [ "api" ]
     restart: unless-stopped
-            
+  
   gateway:
     build:
       context: .
@@ -182,7 +206,11 @@ services:
         condition: service_started
       comp-api:
         condition: service_started
-    profiles: [ "gw" ]
+      file-api:
+        condition: service_started
+      notify-api:
+        condition: service_started
+    profiles: [ "api" ]
     restart: unless-stopped
 
   # --------------- Observability --------------
@@ -192,12 +220,13 @@ services:
     ports:
       - "16686:16686"  # UI
       - "4317:4317"    # OTLP gRPC
-    profiles: [ "obs" ]
+    profiles: [ "api" ]
     restart: unless-stopped
 
 volumes:
-  pg:
+  pg-core:
   pg-perf:
   pg-comp:
+  pg-notif:
   pg-files:
   files-data:
