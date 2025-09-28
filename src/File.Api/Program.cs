@@ -228,7 +228,7 @@ app.MapPost("/api/files",
 app.MapGet("/api/files/{id:guid}", async (HttpContext ctx, Guid id, FilesDbContext db, SignedUrlService svc) =>
 {
     var (tenantId, problem) = RequireTenant(ctx);
-    //if (problem is not null) return problem;
+    // if (problem is not null) return problem;
 
     var rec = await db.Files.FirstOrDefaultAsync(f => f.Id == id && f.TenantId == tenantId, ctx.RequestAborted);
     if (rec is null) return Results.NotFound();
@@ -245,7 +245,13 @@ app.MapGet("/api/files/{id:guid}", async (HttpContext ctx, Guid id, FilesDbConte
             return Results.StatusCode(StatusCodes.Status401Unauthorized);
     }
 
-    return Results.File(full, rec.ContentType, enableRangeProcessing: true);
+    // burada orijinal dosya adı header'a yazılıyor
+    return Results.File(
+        path: full,
+        contentType: rec.ContentType,
+        fileDownloadName: rec.OriginalName ?? $"{rec.Id}{Path.GetExtension(rec.RelPath)}",
+        enableRangeProcessing: true
+    );
 });
 
 // POST /api/files/{id}/tokens  { "expiresInSeconds": 300 }

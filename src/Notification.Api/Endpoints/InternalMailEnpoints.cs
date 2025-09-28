@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Notification.Api.Infrastructure;
 using Notification.Api.Models;
@@ -11,8 +12,10 @@ public static class InternalMailEnpoints
 {
     public static IEndpointRouteBuilder MapMailEndpoints(this IEndpointRouteBuilder app)
     {
+        var mailApi = app.MapGroup("/api/notify/mail");
+
 // ---- Admin: Tenant mail config upsert & get ----
-        app.MapPost("/internal/mail/settings/upsert", async (MailSetting dto, NotifDbContext db) =>
+        mailApi.MapPost("/settings/upsert", async (MailSetting dto, NotifDbContext db) =>
         {
             var existing = await db.MailSettings.FindAsync(dto.TenantId);
             if (existing is null)
@@ -36,7 +39,7 @@ public static class InternalMailEnpoints
             return Results.NoContent();
         });
 
-        app.MapGet("/internal/mail/settings/{tenantId:guid}", async (Guid tenantId, NotifDbContext db) =>
+        mailApi.MapGet("/settings/{tenantId:guid}", async (Guid tenantId, NotifDbContext db) =>
         {
             var s = await db.MailSettings.FindAsync(tenantId);
             return s is null ? Results.NotFound() : Results.Ok(s);
@@ -44,7 +47,7 @@ public static class InternalMailEnpoints
 
 // ---- Queue: enqueue mail ----
 
-        app.MapPost("/internal/notify/enqueue", async (EnqueueMailReq req, NotifDbContext db) =>
+        mailApi.MapPost("/enqueue", async (EnqueueMailReq req, NotifDbContext db) =>
         {
             if (req.To == null || req.To.Length == 0) return Results.BadRequest(new { error = "to_required" });
             if (string.IsNullOrWhiteSpace(req.Subject)) return Results.BadRequest(new { error = "subject_required" });
@@ -71,7 +74,7 @@ public static class InternalMailEnpoints
         });
 
 // ---- Queue: peek/list (admin gözlem) ----
-        app.MapGet("/internal/notify/queue", async (int take, NotifDbContext db) =>
+        mailApi.MapGet("/queue/{take}", async (int take, NotifDbContext db) =>
         {
             take = (take <= 0 || take > 100) ? 50 : take;
             var list = await db.MailQueue
@@ -81,12 +84,13 @@ public static class InternalMailEnpoints
                 {
                     x.Id, x.TenantId, x.ToList, x.Subject, x.Status, x.CreatedAt, x.StartedAt, x.FinishedAt, x.Error
                 })
+                .OrderByDescending(k => k.CreatedAt)
                 .ToListAsync();
             return Results.Ok(list);
         });
 
 // ---- Queue: trigger once (test için) ----
-        app.MapPost("/internal/notify/trigger", async (QueueWorker worker) =>
+        mailApi.MapPost("/trigger", async ([FromServices] QueueWorker worker) =>
         {
             await worker.ProcessOnce(CancellationToken.None);
             return Results.Ok(new { triggered = true, at = DateTime.UtcNow });

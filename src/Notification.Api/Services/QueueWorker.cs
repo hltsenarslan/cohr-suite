@@ -3,7 +3,7 @@ using Notification.Api.Infrastructure;
 
 namespace Notification.Api.Services;
 
-public class QueueWorker(ILogger<QueueWorker> logger, IServiceProvider sp, IConfiguration cfg, IHttpClientFactory hcf) 
+public class QueueWorker(ILogger<QueueWorker> logger, IServiceProvider sp, IConfiguration cfg, IHttpClientFactory hcf)
     : BackgroundService
 {
     private readonly TimeSpan _interval = TimeSpan.FromHours(1);
@@ -41,6 +41,7 @@ public class QueueWorker(ILogger<QueueWorker> logger, IServiceProvider sp, IConf
             {
                 m.StartedAt = DateTime.UtcNow;
             }
+
             await db.SaveChangesAsync(ct);
 
             foreach (var item in batch)
@@ -57,18 +58,35 @@ public class QueueWorker(ILogger<QueueWorker> logger, IServiceProvider sp, IConf
                     var attachList = item.Attachments.Take(5).ToList();
 
                     // File.Api'dan indir
-                    var streams = new List<(Stream,string)>();
+                    var streams = new List<(Stream, string)>();
                     foreach (var a in attachList)
                     {
-                        var url = $"{_fileApiBase}/internal/files/{a.FileId}/raw";
+                        var url = $"{_fileApiBase}/api/files/{a.FileId}";
                         using var req = new HttpRequestMessage(HttpMethod.Get, url);
                         // tenant güvenliği için header forward edelim
-                        req.Headers.TryAddWithoutValidation("X-Tenant-Id", item.TenantId.ToString());
                         var res = await http.SendAsync(req, ct);
                         res.EnsureSuccessStatusCode();
                         var ms = new MemoryStream();
                         await res.Content.CopyToAsync(ms, ct);
-                        streams.Add((ms, a.FileName ?? $"{a.FileId}.bin"));
+
+                        // Content-Disposition: attachment; filename="report.pdf"
+                        var filename = a.FileName;
+                        if (string.IsNullOrWhiteSpace(filename) &&
+                            res.Content.Headers.ContentDisposition?.FileNameStar != null)
+                        {
+                            filename = res.Content.Headers.ContentDisposition.FileNameStar.Trim('"');
+                        }
+                        else if (string.IsNullOrWhiteSpace(filename) &&
+                                 res.Content.Headers.ContentDisposition?.FileName != null)
+                        {
+                            filename = res.Content.Headers.ContentDisposition.FileName.Trim('"');
+                        }
+                        filename ??= $"{a.FileId}{Path.GetExtension(res.Content.Headers.ContentType?.MediaType ?? "")}";
+
+
+                        streams.Add((ms, filename));
+                        
+                        
                     }
 
                     await mailer.SendAsync(setting, item, streams, ct);

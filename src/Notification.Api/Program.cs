@@ -28,6 +28,7 @@ if (!builder.Environment.IsEnvironment("Testing"))
 // services
 builder.Services.AddScoped<IMailer, Mailer>();
 builder.Services.AddHostedService<QueueWorker>();
+builder.Services.AddSingleton<QueueWorker>();
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(o =>

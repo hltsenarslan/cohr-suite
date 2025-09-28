@@ -24,4 +24,8 @@
     <ItemGroup>
       <None Remove="data\files\a0cb825116bc6bdecc665d76b0c7b0ac\public\2025\09\14\52dbbd93fce643d2ae3abde734f09f57.png" />
     </ItemGroup>
+
+    <ItemGroup>
+      <Folder Include="data\files\00000000000000000000000000000000\public\2025\09\28\" />
+    </ItemGroup>
 </Project>

@@ -135,6 +135,8 @@ builder.Services.AddAuthorization(options => { options.AddPolicy("RequireAdmin",
 
 
 var app = builder.Build();
+app.MapHealth();
+
 app.UseMiddleware<CompFeatureMiddleware>();
 app.Use(async (ctx, next) =>
 {
@@ -176,7 +178,7 @@ if (!app.Environment.IsEnvironment("Testing"))
     db.Database.Migrate();
 }
 
-app.MapHealth();
+
 
 app.UseMiddleware<TenantContextMiddleware>();
 app.MapMe();
